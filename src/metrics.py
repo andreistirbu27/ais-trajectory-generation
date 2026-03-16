@@ -10,7 +10,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from .data import Scalers
+from .data import Scalers, VelScalers
 
 
 def haversine_meters(lat1, lon1, lat2, lon2) -> np.ndarray:
@@ -152,3 +152,117 @@ def sanity_check(model, loader, device, scalers: Scalers, pred_mode: str):
         err = haversine_meters(t[1], t[0], p[1], p[0])
         print(f"    sample {i}: pred ({p[0]:.3f}°, {p[1]:.3f}°)  "
               f"true ({t[0]:.3f}°, {t[1]:.3f}°)  err {err:.0f}m")
+
+
+# ─── Velocity evaluation ──────────────────────────────────────────────────────
+
+def _recover_positions(pred_vel_norm, y_vel_norm, x_np, dt_next_np, scalers: VelScalers):
+    """
+    Convert normalised velocity predictions to lon/lat positions.
+
+    pred_vel_norm, y_vel_norm : (S, B, 2) normalised velocity
+    x_np                      : (S, B, D) normalised input features
+    dt_next_np                : (S, B)    seconds per step
+    Returns pred_pos, true_pos : (S, B, 2) lon/lat degrees
+    """
+    input_pos    = scalers.pos.inverse(x_np[:, :, :2])        # (S, B, 2)
+    pred_vel_raw = scalers.vel.inverse(pred_vel_norm)          # (S, B, 2) deg/s
+    y_vel_raw    = scalers.vel.inverse(y_vel_norm)             # (S, B, 2) deg/s
+    dt           = dt_next_np[:, :, None]                      # (S, B, 1)
+    pred_pos     = input_pos + pred_vel_raw * dt               # (S, B, 2)
+    true_pos     = input_pos + y_vel_raw    * dt               # (S, B, 2)
+    return pred_pos, true_pos
+
+
+@torch.no_grad()
+def evaluate_vel(model, loader, device, scalers: VelScalers) -> dict:
+    model.eval()
+    ade_list, fde_list, mse_list = [], [], []
+    for x, y, gap_mask, vtype, dt_next in loader:
+        x, y     = x.to(device), y.to(device)
+        gap_mask = gap_mask.to(device)
+        vtype    = vtype.to(device)
+        pred     = model(x, gap_mask=gap_mask, vessel_type=vtype)  # (S, B, 2)
+        mse_list.append(nn.functional.mse_loss(pred[1:], y[1:]).item())
+
+        pred_pos, true_pos = _recover_positions(
+            pred.cpu().numpy(), y.cpu().numpy(),
+            x.cpu().numpy(), dt_next.numpy(), scalers)
+
+        S, B = pred_pos.shape[:2]
+        for b in range(B):
+            dists = [haversine_meters(true_pos[t, b, 1], true_pos[t, b, 0],
+                                     pred_pos[t, b, 1], pred_pos[t, b, 0])
+                     for t in range(1, S)]
+            ade_list.append(np.mean(dists))
+            fde_list.append(dists[-1])
+
+    if not mse_list:
+        return {"mse": float("nan"), "ade_m": float("nan"), "fde_m": float("nan")}
+    return {"mse": np.mean(mse_list),
+            "ade_m": np.mean(ade_list),
+            "fde_m": np.mean(fde_list)}
+
+
+def evaluate_constvel_baseline_vel(loader, device, scalers: VelScalers) -> dict:
+    """
+    Const-vel baseline for velocity mode.
+    Predicts vel[t] = vel[t-1]; recovers pred_pos = input_pos + pred_vel * dt_next.
+    """
+    ade_list, fde_list, mse_list = [], [], []
+    for x, y, gap_mask, vtype, dt_next in loader:
+        x_np  = x.numpy()       # (S, B, D)
+        y_np  = y.numpy()       # (S, B, 2)
+        dt_np = dt_next.numpy() # (S, B)
+
+        pos_raw  = scalers.pos.inverse(x_np[:, :, :2])            # (S, B, 2)
+        disp_raw = np.concatenate([pos_raw[:1] * 0,
+                                   np.diff(pos_raw, axis=0)], axis=0)  # (S, B, 2)
+        logdt_raw = scalers.logdt.inverse(x_np[:, :, 2:3])        # (S, B, 1)
+        dt_input  = np.expm1(logdt_raw[:, :, 0]).clip(min=1.0)    # (S, B)
+        vel_raw   = disp_raw / dt_input[:, :, None]                # (S, B, 2) deg/s
+
+        pred_vel_raw  = np.concatenate([vel_raw[:1], vel_raw[:-1]], axis=0)  # (S, B, 2)
+        pred_vel_norm = scalers.vel.transform(
+            pred_vel_raw.reshape(-1, 2)).reshape(pred_vel_raw.shape)
+        mse_list.append(((pred_vel_norm[1:] - y_np[1:]) ** 2).mean())
+
+        pred_pos = pos_raw + pred_vel_raw * dt_np[:, :, None]      # (S, B, 2)
+        y_vel_raw = scalers.vel.inverse(y_np)
+        true_pos  = pos_raw + y_vel_raw   * dt_np[:, :, None]      # (S, B, 2)
+
+        S, B = pred_pos.shape[:2]
+        for b in range(B):
+            dists = [haversine_meters(true_pos[t, b, 1], true_pos[t, b, 0],
+                                     pred_pos[t, b, 1], pred_pos[t, b, 0])
+                     for t in range(1, S)]
+            ade_list.append(np.mean(dists))
+            fde_list.append(dists[-1])
+
+    if not mse_list:
+        return {"mse": float("nan"), "ade_m": float("nan"), "fde_m": float("nan")}
+    return {"mse": np.mean(mse_list),
+            "ade_m": np.mean(ade_list),
+            "fde_m": np.mean(fde_list)}
+
+
+@torch.no_grad()
+def sanity_check_vel(model, loader, device, scalers: VelScalers):
+    """Print a few predicted vs true next positions to verify sensible vel output."""
+    model.eval()
+    x, y, gap_mask, vtype, dt_next = next(iter(loader))
+    x, y     = x.to(device), y.to(device)
+    gap_mask = gap_mask.to(device)
+    vtype    = vtype.to(device)
+    pred     = model(x, gap_mask=gap_mask, vessel_type=vtype)
+
+    pred_pos, true_pos = _recover_positions(
+        pred.cpu().numpy(), y.cpu().numpy(),
+        x.cpu().numpy(), dt_next.numpy(), scalers)
+
+    t = pred_pos.shape[0] - 1
+    for i in range(min(3, pred_pos.shape[1])):
+        err = haversine_meters(true_pos[t, i, 1], true_pos[t, i, 0],
+                               pred_pos[t, i, 1], pred_pos[t, i, 0])
+        print(f"    sample {i}: pred ({pred_pos[t,i,0]:.3f}°, {pred_pos[t,i,1]:.3f}°)  "
+              f"true ({true_pos[t,i,0]:.3f}°, {true_pos[t,i,1]:.3f}°)  err {err:.0f}m")

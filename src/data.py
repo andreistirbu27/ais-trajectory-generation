@@ -316,3 +316,119 @@ def get_loader(
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
                       collate_fn=collate, drop_last=drop_last,
                       num_workers=num_workers, pin_memory=False)
+
+
+# ─── Velocity scalers ─────────────────────────────────────────────────────────
+
+@dataclass
+class VelScalers:
+    """
+    Extends Scalers with a velocity scaler for the target [dlon/dt, dlat/dt] in deg/s.
+    Use when training with --target velocity (train_vel.py).
+    """
+    pos:   Scaler   # [lon, lat] — absolute position
+    logdt: Scaler   # log1p(dt_seconds)
+    disp:  Scaler   # [dlon, dlat] — used for INPUT velocity features
+    vel:   Scaler   # [dlon/dt, dlat/dt] in deg/s — TARGET scaler
+
+    @staticmethod
+    def fit(train_tracks: Dict[str, np.ndarray]) -> "VelScalers":
+        base = Scalers.fit(train_tracks)
+        all_vels = []
+        for pts in train_tracks.values():
+            disp = np.diff(pts[:, :2], axis=0)         # (T-1, 2) degrees
+            dt   = pts[1:, 2].clip(min=1.0)             # (T-1,) seconds, avoid /0
+            all_vels.append(disp / dt[:, None])         # deg/s
+        vels = np.concatenate(all_vels, axis=0)
+        vel_scaler = Scaler(
+            mean=vels.mean(axis=0).astype(np.float32),
+            std =vels.std(axis=0).clip(min=1e-8).astype(np.float32),
+        )
+        return VelScalers(pos=base.pos, logdt=base.logdt, disp=base.disp, vel=vel_scaler)
+
+
+# ─── Velocity dataset ─────────────────────────────────────────────────────────
+
+class CausalVelDataset(Dataset):
+    """
+    Like CausalDataset but targets velocity [dlon/dt, dlat/dt] instead of
+    raw displacement. Also yields dt_next (seconds per step) for evaluation.
+
+    x        : (seq_len, input_dim)  — same features as CausalDataset
+    y        : (seq_len, 2)          — normalised velocity at each step
+    gap_mask : (seq_len,) bool       — True where input dt > max_gap_sec
+    vtype    : int64 scalar
+    dt_next  : (seq_len,) float32    — seconds from step t to t+1 (for recovery)
+    """
+
+    def __init__(self, tracks: Dict[str, np.ndarray],
+                 vessel_types: Dict[str, int],
+                 vtype_vocab: Dict[int, int],
+                 scalers: VelScalers,
+                 seq_len: int, stride: int = 1,
+                 max_windows_per_track: Optional[int] = None,
+                 use_velocity: bool = True, max_gap_sec: float = 600):
+        self.tracks       = tracks
+        self.vessel_types = vessel_types
+        self.vtype_vocab  = vtype_vocab
+        self.scalers      = scalers
+        self.seq_len      = seq_len
+        self.use_velocity = use_velocity
+        self.max_gap_sec  = max_gap_sec
+        self.index: List[Tuple[str, int]] = []
+
+        for v_id, pts in tracks.items():
+            T = pts.shape[0]
+            if T < seq_len + 1:
+                continue
+            starts = list(range(0, T - seq_len, stride))
+            if max_windows_per_track and len(starts) > max_windows_per_track:
+                starts = sorted(random.sample(starts, max_windows_per_track))
+            for s in starts:
+                self.index.append((v_id, s))
+
+    def __len__(self):
+        return len(self.index)
+
+    def __getitem__(self, idx):
+        v_id, s = self.index[idx]
+        pts = self.tracks[v_id][s : s + self.seq_len + 1]  # (seq_len+1, 3)
+
+        x        = make_input(pts[:-1], self.scalers, self.use_velocity)  # (seq_len, D)
+
+        disp_raw = pts[1:, :2] - pts[:-1, :2]       # (seq_len, 2) degrees
+        dt_next  = pts[1:, 2].clip(min=1.0)          # (seq_len,) seconds
+        vel_raw  = disp_raw / dt_next[:, None]        # (seq_len, 2) deg/s
+        y        = self.scalers.vel.transform(vel_raw)  # (seq_len, 2) normalised
+
+        gap_mask  = torch.tensor(pts[:-1, 2] > self.max_gap_sec, dtype=torch.bool)
+        raw_code  = self.vessel_types.get(v_id, 0)
+        vtype_idx = torch.tensor(self.vtype_vocab.get(raw_code, 0), dtype=torch.long)
+
+        return (torch.tensor(x),
+                torch.tensor(y),
+                gap_mask,
+                vtype_idx,
+                torch.tensor(dt_next, dtype=torch.float32))
+
+
+def causal_vel_collate(batch):
+    xs, ys, gms, vtypes, dts = zip(*batch)
+    return (
+        torch.stack(xs).transpose(0, 1),    # (S, B, D)
+        torch.stack(ys).transpose(0, 1),    # (S, B, 2)
+        torch.stack(gms),                    # (B, S)
+        torch.stack(vtypes),                 # (B,)
+        torch.stack(dts).transpose(0, 1),   # (S, B)
+    )
+
+
+def get_vel_loader(tracks, vessel_types, vtype_vocab, scalers, seq_len, batch_size,
+                   stride=1, max_windows_per_track=None, shuffle=True, drop_last=True,
+                   use_velocity=True, num_workers=0, max_gap_sec=600):
+    dataset = CausalVelDataset(tracks, vessel_types, vtype_vocab, scalers,
+                                seq_len, stride, max_windows_per_track,
+                                use_velocity, max_gap_sec)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
+                      collate_fn=causal_vel_collate, drop_last=drop_last,
+                      num_workers=num_workers, pin_memory=False)

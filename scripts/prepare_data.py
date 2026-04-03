@@ -115,6 +115,8 @@ def combine(inputs: list, id_col: str, time_col: str) -> pd.DataFrame:
 
 # ── Filter step ───────────────────────────────────────────────────────────────
 
+
+
 def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
     global _initial_rows
     _steps.clear()
@@ -219,15 +221,23 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
                 f"zero movement > {args.max_stationary_min} min")
         df = df.sort_values([id_col, time_col]).reset_index(drop=True)
 
-    # 7. Spatial jumps
+    # 7. Spatial jumps (forward scan — handles chains of bad pings in one pass)
     before = len(df)
-    dlon = df.groupby(id_col)[lon_col].diff()
-    dlat = df.groupby(id_col)[lat_col].diff()
-    jump_deg = np.sqrt(dlon**2 + dlat**2)
     max_jump_deg = args.max_jump_km / 111.0
-    df = df[(jump_deg <= max_jump_deg) | jump_deg.isna()].reset_index(drop=True)
-    _record("7. Spatial jump too large", before, len(df),
-            f"> {args.max_jump_km} km")
+    keep = np.ones(len(df), dtype=bool)
+    for _, grp in df.groupby(id_col):
+        idx  = grp.index
+        lons = grp[lon_col].values
+        lats = grp[lat_col].values
+        last_lon, last_lat = lons[0], lats[0]
+        for k in range(1, len(lons)):
+            jump = np.sqrt((lons[k] - last_lon) ** 2 + (lats[k] - last_lat) ** 2)
+            if jump > max_jump_deg:
+                keep[idx[k]] = False
+            else:
+                last_lon, last_lat = lons[k], lats[k]
+    df = df[keep].reset_index(drop=True)
+    _record("7. Spatial jump too large", before, len(df), f"> {args.max_jump_km} km")
 
     # 8. Temporal gap segmentation
     if args.segment_on_gap:
@@ -291,6 +301,43 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
         _record("11. Vessel avg speed too low", before, len(df),
                 f"avg speed < {args.min_avg_speed_kmh} km/h across track")
 
+    # 12. Spatial extent too small (drifting anchored vessels)
+    if args.min_spatial_extent_km > 0:
+        before = len(df)
+        bounds = df.groupby(id_col).agg(
+            lat_min=(lat_col, "min"), lat_max=(lat_col, "max"),
+            lon_min=(lon_col, "min"), lon_max=(lon_col, "max"),
+        )
+        bbox_diag_km = np.sqrt(
+            (bounds["lon_max"] - bounds["lon_min"]) ** 2 +
+            (bounds["lat_max"] - bounds["lat_min"]) ** 2
+        ) * 111
+        wide_enough = bbox_diag_km[bbox_diag_km >= args.min_spatial_extent_km].index
+        df = df[df[id_col].isin(wide_enough)].reset_index(drop=True)
+        _record("12. Spatial extent too small", before, len(df),
+                f"bbox diagonal < {args.min_spatial_extent_km} km")
+
+    # 13. Looping / repetitive tracks (bbox fill too high)
+    if args.max_bbox_fill > 0:
+        before = len(df)
+        dlon = df.groupby(id_col)[lon_col].diff()
+        dlat = df.groupby(id_col)[lat_col].diff()
+        step_km = np.sqrt(dlon**2 + dlat**2) * 111
+        total_path = step_km.groupby(df[id_col]).sum()
+        bounds = df.groupby(id_col).agg(
+            lat_min=(lat_col, "min"), lat_max=(lat_col, "max"),
+            lon_min=(lon_col, "min"), lon_max=(lon_col, "max"),
+        )
+        bbox_diag_km = np.sqrt(
+            (bounds["lon_max"] - bounds["lon_min"]) ** 2 +
+            (bounds["lat_max"] - bounds["lat_min"]) ** 2
+        ) * 111
+        bbox_fill = total_path / bbox_diag_km.replace(0, np.nan)
+        not_looping = bbox_fill[bbox_fill <= args.max_bbox_fill].index
+        df = df[df[id_col].isin(not_looping)].reset_index(drop=True)
+        _record("13. Looping track (bbox fill too high)", before, len(df),
+                f"path / bbox_diagonal > {args.max_bbox_fill}")
+
     return df
 
 
@@ -337,6 +384,10 @@ def main():
                              "of bbox edge (0 = off)")
     parser.add_argument("--min_avg_speed_kmh", type=float, default=1.0,
                         help="Min average speed per track in km/h (0 = off)")
+    parser.add_argument("--min_spatial_extent_km", type=float, default=1.5,
+                        help="Min bbox diagonal per track in km — drops drifting anchored vessels (0 = off)")
+    parser.add_argument("--max_bbox_fill", type=float, default=20.0,
+                        help="Max path_length / bbox_diagonal ratio — drops looping/ferry tracks (0 = off)")
 
     # Bounding box
     parser.add_argument("--lon_min", type=float, default=-125.0)

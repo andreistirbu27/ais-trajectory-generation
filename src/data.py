@@ -14,6 +14,7 @@ A vocab dict (raw_code → idx) maps raw codes to embedding indices.
 """
 
 import random
+import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -111,6 +112,21 @@ def load_tracks(
     return tracks, vessel_types
 
 
+def _root_id(vid: str) -> str:
+    """Strip batch prefix (b000_) and all trailing segment suffixes (_0, _1_2, etc.)
+    to recover the original MMSI. Ensures all segments of the same physical vessel
+    are grouped together for the train/val split.
+
+    Examples:
+        b000_205283000_0_1  →  205283000
+        205283000_0         →  205283000
+        205283000           →  205283000
+    """
+    s = re.sub(r'^b\d+_', '', str(vid))  # strip batch prefix
+    s = re.sub(r'(_\d+)+$', '', s)        # strip trailing _N segment suffixes
+    return s
+
+
 def train_val_split(
     tracks: Dict[str, np.ndarray],
     vessel_types: Dict[str, int],
@@ -118,12 +134,24 @@ def train_val_split(
     seed: int,
 ) -> Tuple[Dict[str, np.ndarray], Dict[str, int],
            Dict[str, np.ndarray], Dict[str, int]]:
+    """Split by original MMSI (root vessel identity) so all segments of the same
+    physical vessel go entirely to train or entirely to val — no leakage."""
     ids = list(tracks.keys())
-    random.Random(seed).shuffle(ids)
     if len(ids) <= 1 or val_frac <= 0:
         return tracks, vessel_types, {}, {}
-    n_val   = max(1, int(len(ids) * val_frac))
-    val_ids = set(ids[:n_val])
+
+    # Group segment IDs by root MMSI
+    root_to_segs: Dict[str, List[str]] = {}
+    for vid in ids:
+        root = _root_id(vid)
+        root_to_segs.setdefault(root, []).append(vid)
+
+    root_ids = sorted(root_to_segs.keys())
+    random.Random(seed).shuffle(root_ids)
+    n_val    = max(1, int(len(root_ids) * val_frac))
+    val_roots = set(root_ids[:n_val])
+    val_ids   = {vid for vid in ids if _root_id(vid) in val_roots}
+
     return (
         {k: v for k, v in tracks.items()       if k not in val_ids},
         {k: v for k, v in vessel_types.items() if k not in val_ids},

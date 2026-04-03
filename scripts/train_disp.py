@@ -153,8 +153,8 @@ def main():
                         choices=["causal", "single"],
                         help="causal=seq2seq with causal mask (recommended). "
                              "single=predict one step from full bidirectional context.")
-    parser.add_argument("--seq_len",               type=int,   default=20)
-    parser.add_argument("--stride",                type=int,   default=5)
+    parser.add_argument("--seq_len",               type=int,   default=120)
+    parser.add_argument("--stride",                type=int,   default=50)
     parser.add_argument("--max_windows_per_track", type=int,   default=None)
     parser.add_argument("--max_gap_sec",           type=float, default=600.0,
                         help="Time gaps > this (seconds) are masked as padding keys "
@@ -275,6 +275,7 @@ def main():
         print("─" * 65 + "\n")
 
     best_val_mse = float("inf")
+    metrics_path = os.path.join(args.out_dir, "metrics.csv")
 
     for epoch in range(1, args.epochs + 1):
         train_mse = train_one_epoch(
@@ -285,13 +286,15 @@ def main():
 
         log = f"Epoch {epoch:3d}/{args.epochs} | train mse {train_mse:.6f}"
 
+        val_mse, val_ade, val_fde = None, None, None
         if val_loader:
             metrics = evaluate(model, val_loader, device, scalers, args.pred_mode)
-            log += (f" | val mse {metrics['mse']:.6f} | "
-                    f"ADE {metrics['ade_m']:.1f}m | FDE {metrics['fde_m']:.1f}m")
+            val_mse, val_ade, val_fde = metrics["mse"], metrics["ade_m"], metrics["fde_m"]
+            log += (f" | val mse {val_mse:.6f} | "
+                    f"ADE {val_ade:.1f}m | FDE {val_fde:.1f}m")
 
-            if metrics["mse"] < best_val_mse:
-                best_val_mse = metrics["mse"]
+            if val_mse < best_val_mse:
+                best_val_mse = val_mse
                 torch.save({
                     "epoch": epoch, "model": model.state_dict(),
                     "optimizer": optimizer.state_dict(),
@@ -313,6 +316,16 @@ def main():
                 "logdt_mean": scalers.logdt.mean, "logdt_std": scalers.logdt.std,
                 "args": vars(args),
             }, os.path.join(args.out_dir, "last.pt"))
+
+        # Save per-epoch metrics to CSV
+        write_header = (epoch == 1)
+        mse_str = f"{val_mse:.6f}" if val_mse is not None else ""
+        ade_str = f"{val_ade:.2f}" if val_ade is not None else ""
+        fde_str = f"{val_fde:.2f}" if val_fde is not None else ""
+        with open(metrics_path, "w" if write_header else "a") as f:
+            if write_header:
+                f.write("epoch,train_mse,val_mse,val_ade_m,val_fde_m\n")
+            f.write(f"{epoch},{train_mse:.6f},{mse_str},{ade_str},{fde_str}\n")
 
         print(log)
 

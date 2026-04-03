@@ -119,8 +119,8 @@ def main():
     parser.add_argument("--lat_col",   default="LAT")
     parser.add_argument("--lon_col",   default="LON")
 
-    parser.add_argument("--seq_len",               type=int,   default=20)
-    parser.add_argument("--stride",                type=int,   default=5)
+    parser.add_argument("--seq_len",               type=int,   default=120)
+    parser.add_argument("--stride",                type=int,   default=50)
     parser.add_argument("--max_windows_per_track", type=int,   default=None)
     parser.add_argument("--max_gap_sec",           type=float, default=600.0)
     parser.add_argument("--use_velocity",          action=argparse.BooleanOptionalAction, default=True)

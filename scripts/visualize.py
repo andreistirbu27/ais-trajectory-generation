@@ -309,7 +309,12 @@ def main():
     p.add_argument("--n_val",      type=int,   default=5,     help="Val track panels in viz_tracks")
     p.add_argument("--n_pred",     type=int,   default=12,    help="Prediction panels in viz_predictions")
     p.add_argument("--out_dir",    default="runs/ais_transformer")
+    p.add_argument("--plot",       nargs="+",  default=["distribution", "tracks", "predictions"],
+                   choices=["distribution", "tracks", "predictions"],
+                   help="Which plots to generate (default: all three)")
     args = p.parse_args()
+
+    plots = set(args.plot)
 
     os.makedirs(args.out_dir, exist_ok=True)
     device = torch.device("cpu")
@@ -320,26 +325,29 @@ def main():
         tracks, vessel_types, args.val_frac, args.seed)
     print(f"  Train: {len(train_tracks):,}  Val: {len(val_tracks):,}")
 
-    print("\n[1/3] Plotting data distribution...")
-    plot_distribution(train_tracks, val_tracks, vessel_types,
-                      os.path.join(args.out_dir, "viz_distribution.png"))
+    if "distribution" in plots:
+        print("\nPlotting data distribution...")
+        plot_distribution(train_tracks, val_tracks, vessel_types,
+                          os.path.join(args.out_dir, "viz_distribution.png"))
 
-    print(f"\n[2/3] Plotting {args.n_train + args.n_val} raw trajectory samples...")
-    plot_tracks(train_tracks, train_vtypes, val_tracks, val_vtypes,
-                args.n_train, args.n_val,
-                os.path.join(args.out_dir, "viz_tracks.png"),
-                seed=args.seed)
+    if "tracks" in plots:
+        print(f"\nPlotting {args.n_train + args.n_val} raw trajectory samples...")
+        plot_tracks(train_tracks, train_vtypes, val_tracks, val_vtypes,
+                    args.n_train, args.n_val,
+                    os.path.join(args.out_dir, "viz_tracks.png"),
+                    seed=args.seed)
 
-    if args.checkpoint:
-        print(f"\n[3/3] Loading checkpoint: {args.checkpoint}")
-        model, scalers, vtype_vocab, model_args, epoch = load_checkpoint(args.checkpoint, device)
-        print(f"      Epoch {epoch}")
-        plot_predictions(model, val_tracks, val_vtypes, vtype_vocab, scalers,
-                         model_args, device, args.n_pred,
-                         os.path.join(args.out_dir, "viz_predictions.png"),
-                         seed=args.seed)
-    else:
-        print("\n[3/3] No --checkpoint given — skipping prediction plot.")
+    if "predictions" in plots:
+        if args.checkpoint:
+            print(f"\nLoading checkpoint: {args.checkpoint}")
+            model, scalers, vtype_vocab, model_args, epoch = load_checkpoint(args.checkpoint, device)
+            print(f"  Epoch {epoch}")
+            plot_predictions(model, val_tracks, val_vtypes, vtype_vocab, scalers,
+                             model_args, device, args.n_pred,
+                             os.path.join(args.out_dir, "viz_predictions.png"),
+                             seed=args.seed)
+        else:
+            print("\nNo --checkpoint given — skipping prediction plot.")
 
     print("\nDone.")
 

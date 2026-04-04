@@ -40,7 +40,9 @@ def evaluate(model, loader, device, scalers: Scalers, pred_mode: str) -> dict:
         vtype    = vtype.to(device)
         pred = model(x, gap_mask=gap_mask, vessel_type=vtype)
 
-        total_mse += mse_fn(pred, y).item()
+        # Exclude t=0: velocity feature is always 0 there (prepend artifact),
+        # consistent with training loss which uses pred[1:], y[1:]
+        total_mse += mse_fn(pred[1:], y[1:]).item()
         n += 1
 
         x_np = x.cpu().numpy()[:, :, :2]   # normalized input positions
@@ -57,7 +59,7 @@ def evaluate(model, loader, device, scalers: Scalers, pred_mode: str) -> dict:
 
             dist = haversine_meters(y_geo[:, :, 1], y_geo[:, :, 0],
                                     pred_geo[:, :, 1], pred_geo[:, :, 0])
-            ade_sum += float(dist.mean())
+            ade_sum += float(dist[1:].mean())   # exclude t=0
             fde_sum += float(dist[-1].mean())
         else:
             last_pos_geo  = scalers.pos.inverse(x_np[-1])
@@ -90,22 +92,30 @@ def evaluate_constant_velocity_baseline(loader, device, scalers: Scalers,
         pos  = x[:, :, :2]   # (seq_len, B, 2) normalized lon/lat
 
         if pred_mode == "causal":
-            vel_norm = torch.diff(pos, dim=0, prepend=pos[:1])   # (seq_len, B, 2)
-            total_mse += mse_fn(vel_norm, y).item()
-            n += 1
+            # Compute in geo space to avoid pos-scaler / disp-scaler mismatch
+            x_np    = x.cpu().numpy()[:, :, :2]
+            S, B    = x_np.shape[:2]
+            pos_geo = scalers.pos.inverse(x_np.reshape(-1, 2)).reshape(S, B, 2)
 
-            S, B = vel_norm.shape[0], vel_norm.shape[1]
-            x_np          = x.cpu().numpy()[:, :, :2]
-            input_pos_geo = scalers.pos.inverse(x_np.reshape(-1, 2)).reshape(S, B, 2)
-            pred_disp_geo = scalers.disp.inverse(
-                vel_norm.cpu().numpy().reshape(-1, 2)).reshape(S, B, 2)
+            # CV prediction: next displacement = previous step's displacement
+            geo_diff = np.concatenate([np.zeros_like(pos_geo[:1]),
+                                       np.diff(pos_geo, axis=0)], axis=0)  # (S,B,2)
+            pred_geo = pos_geo + geo_diff
+
             true_disp_geo = scalers.disp.inverse(
                 y.cpu().numpy().reshape(-1, 2)).reshape(S, B, 2)
-            pred_geo = input_pos_geo + pred_disp_geo
-            y_geo    = input_pos_geo + true_disp_geo
+            y_geo = pos_geo + true_disp_geo
+
+            # MSE in normalised displacement space, exclude t=0
+            pred_disp_norm = torch.tensor(
+                scalers.disp.transform(geo_diff.reshape(-1, 2)).reshape(S, B, 2),
+                dtype=torch.float32)
+            total_mse += mse_fn(pred_disp_norm[1:], y[1:].cpu()).item()
+            n += 1
+
             dist = haversine_meters(y_geo[:, :, 1], y_geo[:, :, 0],
                                     pred_geo[:, :, 1], pred_geo[:, :, 0])
-            ade_sum += float(dist.mean())
+            ade_sum += float(dist[1:].mean())   # exclude t=0
             fde_sum += float(dist[-1].mean())
         else:
             vel_norm = pos[-1] - pos[-2]   # (B, 2)

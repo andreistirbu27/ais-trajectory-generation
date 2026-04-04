@@ -113,8 +113,38 @@ def combine(inputs: list, id_col: str, time_col: str) -> pd.DataFrame:
     return combined
 
 
-# ── Filter step ───────────────────────────────────────────────────────────────
+# ── Geometry helpers (for turn-based segmentation) ────────────────────────────
 
+def _bearing(lat1, lon1, lat2, lon2):
+    """Vectorised bearing from point 1 → 2 in degrees [0, 360)."""
+    dlon = np.radians(lon2 - lon1)
+    r1   = np.radians(lat1)
+    r2   = np.radians(lat2)
+    x    = np.sin(dlon) * np.cos(r2)
+    y    = np.cos(r1) * np.sin(r2) - np.sin(r1) * np.cos(r2) * np.cos(dlon)
+    return (np.degrees(np.arctan2(x, y)) + 360) % 360
+
+
+def _compute_turns(lat, lon):
+    """Absolute turn angle (degrees) at each ping. First/last are NaN."""
+    n = len(lat)
+    if n < 3:
+        return np.full(n, np.nan)
+    brg_in  = _bearing(lat[:-1],  lon[:-1],  lat[1:],  lon[1:])
+    brg_out = _bearing(lat[1:-1], lon[1:-1], lat[2:],  lon[2:])
+    delta   = (brg_out - brg_in[:-1] + 180) % 360 - 180
+    result  = np.full(n, np.nan)
+    result[1:n - 1] = np.abs(delta)
+    return result
+
+
+def _assign_segments(turns, max_turn_deg):
+    """Cumulative segment ID — increments at each turn > max_turn_deg."""
+    reversal = (~np.isnan(turns)) & (turns > max_turn_deg)
+    return np.cumsum(reversal)
+
+
+# ── Filter step ───────────────────────────────────────────────────────────────
 
 
 def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
@@ -135,7 +165,7 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
     df = df.dropna(subset=cols)
     _record("1. Drop missing values", before, len(df))
 
-    # 1b. Vessel type filter
+    # 2. Vessel type filter
     if args.keep_vessel_types and vtype_col in df.columns:
         before = len(df)
         allowed: set = set()
@@ -147,30 +177,30 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
             else:
                 allowed.add(int(part))
         df = df[df[vtype_col].isin(allowed)].reset_index(drop=True)
-        _record("1b. Vessel type filtered", before, len(df),
+        _record("2. Vessel type filtered", before, len(df),
                 f"kept VesselType in {args.keep_vessel_types}")
 
-    # 2. Parse timestamps
+    # 3. Parse timestamps
     before = len(df)
     df[time_col] = pd.to_datetime(df[time_col], errors="coerce")
     df = df.dropna(subset=[time_col])
-    _record("2. Unparseable timestamps", before, len(df))
+    _record("3. Unparseable timestamps", before, len(df))
 
-    # 3. Invalid coordinates
+    # 4. Invalid coordinates
     before = len(df)
     df = df[df[lat_col].between(-90, 90) & df[lon_col].between(-180, 180)]
-    _record("3. Out-of-range coordinates", before, len(df),
+    _record("4. Out-of-range coordinates", before, len(df),
             "LAT not in [-90,90] or LON not in [-180,180]")
 
-    # 4. Bounding box
+    # 5. Bounding box
     before = len(df)
     lat_ok = (df[lat_col] >= args.lat_min) & (df[lat_col] <= args.lat_max)
     lon_ok = (df[lon_col] >= args.lon_min) & (df[lon_col] <= args.lon_max)
     df = df[lat_ok & lon_ok]
-    _record("4. Outside bounding box", before, len(df),
+    _record("5. Outside bounding box", before, len(df),
             f"LON [{args.lon_min}, {args.lon_max}]  LAT [{args.lat_min}, {args.lat_max}]")
 
-    # 4b. Border-truncated trajectories
+    # 6. Border-truncated trajectories
     if args.bbox_border_deg > 0:
         before = len(df)
         df = df.sort_values([id_col, time_col]).reset_index(drop=True)
@@ -190,18 +220,18 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
         )
         truncated_ids = near_border[near_border].index
         df = df[~df[id_col].isin(truncated_ids)].reset_index(drop=True)
-        _record("4b. Border-truncated trajectories", before, len(df),
+        _record("6. Border-truncated trajectories", before, len(df),
                 f"start/end within {args.bbox_border_deg}° of bbox edge")
 
-    # 5. Duplicate (vessel, timestamp) pairs
+    # 7. Duplicate (vessel, timestamp) pairs
     before = len(df)
     df = df.drop_duplicates(subset=[id_col, time_col])
-    _record("5. Duplicate (vessel, timestamp)", before, len(df))
+    _record("7. Duplicate (vessel, timestamp)", before, len(df))
 
     # Sort (required for all diff-based filters below)
     df = df.sort_values([id_col, time_col]).reset_index(drop=True)
 
-    # 5b. GPS median filter
+    # 8. GPS median filter
     if args.median_filter_window > 1:
         w = args.median_filter_window
         df[lon_col] = (df.groupby(id_col)[lon_col]
@@ -209,7 +239,7 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
         df[lat_col] = (df.groupby(id_col)[lat_col]
                          .transform(lambda x: x.rolling(w, center=True, min_periods=1).median()))
 
-    # 6. Stationary streaks
+    # 9. Stationary streaks
     if args.max_stationary_min > 0:
         before = len(df)
         dlon = df.groupby(id_col)[lon_col].diff()
@@ -217,11 +247,11 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
         dt_s = df.groupby(id_col)[time_col].diff().dt.total_seconds()
         mask = (dlon == 0) & (dlat == 0) & (dt_s > args.max_stationary_min * 60)
         df = df[~mask].reset_index(drop=True)
-        _record("6. Stationary too long", before, len(df),
+        _record("9. Stationary too long", before, len(df),
                 f"zero movement > {args.max_stationary_min} min")
         df = df.sort_values([id_col, time_col]).reset_index(drop=True)
 
-    # 7. Spatial jumps (forward scan — handles chains of bad pings in one pass)
+    # 10. Spatial jumps (forward scan — handles chains of bad pings in one pass)
     before = len(df)
     max_jump_deg = args.max_jump_km / 111.0
     keep = np.ones(len(df), dtype=bool)
@@ -237,9 +267,9 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
             else:
                 last_lon, last_lat = lons[k], lats[k]
     df = df[keep].reset_index(drop=True)
-    _record("7. Spatial jump too large", before, len(df), f"> {args.max_jump_km} km")
+    _record("10. Spatial jump too large", before, len(df), f"> {args.max_jump_km} km")
 
-    # 8. Temporal gap segmentation
+    # 11. Temporal gap segmentation
     if args.segment_on_gap:
         before = len(df)
         df = df.sort_values([id_col, time_col]).reset_index(drop=True)
@@ -248,16 +278,34 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
         seg_idx = gap_start.groupby(df[id_col]).cumsum().astype(int)
         df[id_col] = df[id_col].astype(str) + "_" + seg_idx.astype(str)
         n_segments = df[id_col].nunique()
-        _record("8. Temporal gap → segmented tracks", before, len(df),
+        _record("11. Temporal gap → segmented tracks", before, len(df),
                 f"gap > {args.max_gap_min} min → {n_segments:,} segments")
     else:
         before = len(df)
         dt_s = df.groupby(id_col)[time_col].diff().dt.total_seconds()
         df = df[(dt_s <= args.max_gap_min * 60) | dt_s.isna()].reset_index(drop=True)
-        _record("8. Temporal gap too large", before, len(df),
+        _record("11. Temporal gap too large", before, len(df),
                 f"> {args.max_gap_min} min")
 
-    # 9. Unrealistic speed
+    # 12. Turn-based segmentation (splits at heading reversals, does NOT delete tracks)
+    if args.max_turn_deg > 0:
+        before = len(df)
+        df = df.sort_values([id_col, time_col]).reset_index(drop=True)
+        new_ids = []
+        for vid, grp in df.groupby(id_col, sort=False):
+            turns = _compute_turns(grp[lat_col].values, grp[lon_col].values)
+            segs  = _assign_segments(turns, args.max_turn_deg)
+            new_ids.extend([f"{vid}_{s}" for s in segs])
+        df[id_col] = new_ids
+        # Drop sub-segments that are too short after splitting
+        counts = df.groupby(id_col)[id_col].transform("count")
+        df = df[counts >= args.min_points_after_split].reset_index(drop=True)
+        n_segs = df[id_col].nunique()
+        _record("12. Turn-based segmentation", before, len(df),
+                f"split at turns > {args.max_turn_deg}° → {n_segs:,} segments "
+                f"(kept ≥ {args.min_points_after_split} pts)")
+
+    # 13. Unrealistic speed
     before = len(df)
     dlon = df.groupby(id_col)[lon_col].diff()
     dlat = df.groupby(id_col)[lat_col].diff()
@@ -265,17 +313,17 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
     dt_h = df.groupby(id_col)[time_col].diff().dt.total_seconds() / 3600
     speed = jump_km / dt_h.replace(0, np.nan)
     df = df[(speed <= args.max_speed_kmh) | speed.isna()].reset_index(drop=True)
-    _record("9. Unrealistic speed", before, len(df),
+    _record("13. Unrealistic speed", before, len(df),
             f"> {args.max_speed_kmh} km/h")
 
-    # 10. Short tracks
+    # 14. Short tracks
     before = len(df)
     counts = df.groupby(id_col)[id_col].transform("count")
     df = df[counts >= args.min_points].reset_index(drop=True)
-    _record("10. Track too short", before, len(df),
+    _record("14. Track too short", before, len(df),
             f"< {args.min_points} points")
 
-    # 10b. Minimum total distance traveled
+    # 15. Minimum total distance traveled
     if args.min_total_dist_km > 0:
         before = len(df)
         dlon = df.groupby(id_col)[lon_col].diff()
@@ -284,10 +332,10 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
         total_dist = step_km.groupby(df[id_col]).sum()
         far_enough = total_dist[total_dist >= args.min_total_dist_km].index
         df = df[df[id_col].isin(far_enough)].reset_index(drop=True)
-        _record("10b. Total distance too short", before, len(df),
+        _record("15. Total distance too short", before, len(df),
                 f"< {args.min_total_dist_km} km total arc-length")
 
-    # 11. Slow / moored vessels
+    # 16. Slow / moored vessels
     if args.min_avg_speed_kmh > 0:
         before = len(df)
         dlon = df.groupby(id_col)[lon_col].diff()
@@ -298,10 +346,10 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
         avg_speed = speed.groupby(df[id_col]).mean()
         fast_enough = avg_speed[avg_speed >= args.min_avg_speed_kmh].index
         df = df[df[id_col].isin(fast_enough)].reset_index(drop=True)
-        _record("11. Vessel avg speed too low", before, len(df),
+        _record("16. Vessel avg speed too low", before, len(df),
                 f"avg speed < {args.min_avg_speed_kmh} km/h across track")
 
-    # 12. Spatial extent too small (drifting anchored vessels)
+    # 17. Spatial extent too small (drifting anchored vessels)
     if args.min_spatial_extent_km > 0:
         before = len(df)
         bounds = df.groupby(id_col).agg(
@@ -314,10 +362,10 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
         ) * 111
         wide_enough = bbox_diag_km[bbox_diag_km >= args.min_spatial_extent_km].index
         df = df[df[id_col].isin(wide_enough)].reset_index(drop=True)
-        _record("12. Spatial extent too small", before, len(df),
+        _record("17. Spatial extent too small", before, len(df),
                 f"bbox diagonal < {args.min_spatial_extent_km} km")
 
-    # 13. Looping / repetitive tracks (bbox fill too high)
+    # 18. Looping / repetitive tracks (bbox fill too high)
     if args.max_bbox_fill > 0:
         before = len(df)
         dlon = df.groupby(id_col)[lon_col].diff()
@@ -335,8 +383,35 @@ def filter_data(df: pd.DataFrame, args) -> pd.DataFrame:
         bbox_fill = total_path / bbox_diag_km.replace(0, np.nan)
         not_looping = bbox_fill[bbox_fill <= args.max_bbox_fill].index
         df = df[df[id_col].isin(not_looping)].reset_index(drop=True)
-        _record("13. Looping track (bbox fill too high)", before, len(df),
+        _record("18. Looping track (bbox fill too high)", before, len(df),
                 f"path / bbox_diagonal > {args.max_bbox_fill}")
+
+    # 19. Erratic speed (speed coefficient of variation too high)
+    if args.max_speed_cv > 0:
+        before = len(df)
+        dlon2 = df.groupby(id_col)[lon_col].diff()
+        dlat2 = df.groupby(id_col)[lat_col].diff()
+        jump_km2 = np.sqrt(dlon2**2 + dlat2**2) * 111
+        dt_h2 = df.groupby(id_col)[time_col].diff().dt.total_seconds() / 3600
+        speed2 = jump_km2 / dt_h2.replace(0, np.nan)
+        speed_cv = speed2.groupby(df[id_col]).apply(
+            lambda s: s.std() / s.mean() if s.mean() > 0 else np.nan)
+        ok = speed_cv[speed_cv <= args.max_speed_cv].index
+        df = df[df[id_col].isin(ok)].reset_index(drop=True)
+        _record("19. Erratic speed (CV too high)", before, len(df),
+                f"speed std/mean > {args.max_speed_cv}")
+
+    # 20. Too many tiny displacement steps (near-stationary despite passing avg-speed filter)
+    if args.max_frac_tiny_disp > 0:
+        before = len(df)
+        dlon3 = df.groupby(id_col)[lon_col].diff()
+        dlat3 = df.groupby(id_col)[lat_col].diff()
+        step_m = np.sqrt(dlon3**2 + dlat3**2) * 111_000
+        frac_tiny = (step_m < 50).groupby(df[id_col]).mean()
+        ok = frac_tiny[frac_tiny <= args.max_frac_tiny_disp].index
+        df = df[df[id_col].isin(ok)].reset_index(drop=True)
+        _record("20. Too many tiny steps", before, len(df),
+                f"> {args.max_frac_tiny_disp:.0%} of steps < 50 m")
 
     return df
 
@@ -388,6 +463,14 @@ def main():
                         help="Min bbox diagonal per track in km — drops drifting anchored vessels (0 = off)")
     parser.add_argument("--max_bbox_fill", type=float, default=20.0,
                         help="Max path_length / bbox_diagonal ratio — drops looping/ferry tracks (0 = off)")
+    parser.add_argument("--max_turn_deg", type=float, default=150.0,
+                        help="Split tracks at turns > this angle in degrees (0 = off)")
+    parser.add_argument("--min_points_after_split", type=int, default=30,
+                        help="Min pings for sub-segments after turn-based split")
+    parser.add_argument("--max_speed_cv", type=float, default=3.0,
+                        help="Max speed coefficient of variation per track (0 = off)")
+    parser.add_argument("--max_frac_tiny_disp", type=float, default=0.8,
+                        help="Max fraction of steps with displacement < 50m (0 = off)")
 
     # Bounding box
     parser.add_argument("--lon_min", type=float, default=-125.0)

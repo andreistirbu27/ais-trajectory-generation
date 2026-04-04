@@ -48,6 +48,7 @@ import random
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -75,9 +76,26 @@ def get_device() -> torch.device:
 
 # ── Training loop ─────────────────────────────────────────────────────────────
 
+def _val_subsample_mse(model, val_loader, val_eval_batches, device):
+    """Run a partial val pass (first val_eval_batches batches) and return MSE."""
+    model.eval()
+    running, n = 0.0, 0
+    with torch.no_grad():
+        for j, (xv, yv, gm, vt) in enumerate(val_loader):
+            if j >= val_eval_batches:
+                break
+            pv = model(xv.to(device), gap_mask=gm.to(device), vessel_type=vt.to(device))
+            running += F.mse_loss(pv[1:], yv[1:].to(device)).item()
+            n += 1
+    model.train()
+    return running / max(n, 1)
+
+
 def train_one_epoch(model, loader, optimizer, scheduler,
                     device, grad_clip, epoch, pred_mode, log_every=50,
-                    lambda_smooth=0.0, loss_fn="mse"):
+                    lambda_smooth=0.0, loss_fn="mse",
+                    val_loader=None, val_eval_batches=30, global_step_offset=0,
+                    metrics_path=None):
     model.train()
     base_loss_fn = nn.HuberLoss(delta=1.0) if loss_fn == "huber" else nn.MSELoss()
     running, running_smooth, total, n = 0.0, 0.0, 0.0, 0
@@ -115,12 +133,28 @@ def train_one_epoch(model, loader, optimizer, scheduler,
         n              += 1
 
         if (i + 1) % log_every == 0:
+            train_mse_avg = running / log_every
             smooth_str = (f" | smooth {running_smooth/log_every:.4f}"
                           if lambda_smooth > 0 else "")
+
+            val_mse_approx = None
+            if val_loader is not None and val_eval_batches > 0:
+                val_mse_approx = _val_subsample_mse(model, val_loader,
+                                                    val_eval_batches, device)
+                val_str = f" | val_mse(~) {val_mse_approx:.6f}"
+            else:
+                val_str = ""
+
             print(f"  epoch {epoch:3d} | step {i+1:5d}/{len(loader)} "
-                  f"| mse {running/log_every:.6f}{smooth_str} "
+                  f"| mse {train_mse_avg:.6f}{smooth_str}{val_str} "
                   f"| grad {grad_norm:.3f} "
                   f"| lr {scheduler.get_last_lr()[0]:.2e}")
+
+            global_step = global_step_offset + i + 1
+            if metrics_path is not None:
+                val_mse_str = f"{val_mse_approx:.6f}" if val_mse_approx is not None else ""
+                with open(metrics_path, "a") as _f:
+                    _f.write(f"{global_step},{epoch},{train_mse_avg:.6f},{val_mse_str},,\n")
             running = 0.0
             running_smooth = 0.0
 
@@ -181,6 +215,8 @@ def main():
                              "(MSE + lambda*accel^2). 0=off.")
     parser.add_argument("--loss_fn",        default="mse", choices=["mse", "huber"],
                         help="Base loss function. huber is more robust to outliers.")
+    parser.add_argument("--val_eval_batches", type=int, default=30,
+                        help="Number of val batches per mid-step eval (0 = disable).")
 
     args = parser.parse_args()
 
@@ -277,11 +313,20 @@ def main():
     best_val_mse = float("inf")
     metrics_path = os.path.join(args.out_dir, "metrics.csv")
 
+    # Write CSV header once
+    with open(metrics_path, "w") as f:
+        f.write("global_step,epoch,train_mse,val_mse,val_ade_m,val_fde_m\n")
+
     for epoch in range(1, args.epochs + 1):
+        global_step_offset = (epoch - 1) * len(train_loader)
         train_mse = train_one_epoch(
             model, train_loader, optimizer, scheduler,
             device, args.grad_clip, epoch, args.pred_mode,
             lambda_smooth=args.lambda_smooth, loss_fn=args.loss_fn,
+            val_loader=val_loader if val_loader else None,
+            val_eval_batches=args.val_eval_batches,
+            global_step_offset=global_step_offset,
+            metrics_path=metrics_path,
         )
 
         log = f"Epoch {epoch:3d}/{args.epochs} | train mse {train_mse:.6f}"
@@ -317,15 +362,13 @@ def main():
                 "args": vars(args),
             }, os.path.join(args.out_dir, "last.pt"))
 
-        # Save per-epoch metrics to CSV
-        write_header = (epoch == 1)
+        # Append epoch-end row (full val metrics; no mid-step train_mse)
+        epoch_step = epoch * len(train_loader)
         mse_str = f"{val_mse:.6f}" if val_mse is not None else ""
         ade_str = f"{val_ade:.2f}" if val_ade is not None else ""
         fde_str = f"{val_fde:.2f}" if val_fde is not None else ""
-        with open(metrics_path, "w" if write_header else "a") as f:
-            if write_header:
-                f.write("epoch,train_mse,val_mse,val_ade_m,val_fde_m\n")
-            f.write(f"{epoch},{train_mse:.6f},{mse_str},{ade_str},{fde_str}\n")
+        with open(metrics_path, "a") as f:
+            f.write(f"{epoch_step},{epoch},,{mse_str},{ade_str},{fde_str}\n")
 
         print(log)
 

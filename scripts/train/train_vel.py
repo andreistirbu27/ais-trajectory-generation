@@ -112,7 +112,9 @@ def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument("--csv",       required=True)
+    parser.add_argument("--config",    default=None,
+                        help="Path to YAML config file. CLI args override config values.")
+    parser.add_argument("--csv",       default=None)
     parser.add_argument("--out_dir",   default="runs/ais_transformer_vel")
     parser.add_argument("--id_col",    default="MMSI")
     parser.add_argument("--time_col",  default="BaseDateTime")
@@ -144,7 +146,18 @@ def main():
                         help="Smoothness regularisation weight (0 = off)")
     parser.add_argument("--loss_fn",        default="mse", choices=["mse", "huber"])
 
+    # Load config file first, then re-parse so CLI args override config values
+    _pre = parser.parse_known_args()[0]
+    if _pre.config:
+        import yaml
+        with open(_pre.config) as _f:
+            _cfg = yaml.safe_load(_f)
+        parser.set_defaults(**{k: v for k, v in _cfg.items() if k != "config"})
+
     args = parser.parse_args()
+
+    if not args.csv:
+        parser.error("--csv is required (either via CLI or --config)")
 
     set_seed(args.seed)
     device = get_device()

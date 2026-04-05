@@ -44,11 +44,13 @@ import argparse
 import math
 import os
 import random
+import time
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from tqdm import tqdm
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -100,7 +102,9 @@ def train_one_epoch(model, loader, optimizer, scheduler,
     base_loss_fn = nn.HuberLoss(delta=1.0) if loss_fn == "huber" else nn.MSELoss()
     running, running_smooth, total, n = 0.0, 0.0, 0.0, 0
 
-    for i, (x, y, gap_mask, vtype) in enumerate(loader):
+    pbar = tqdm(enumerate(loader), total=len(loader),
+                desc=f"  Epoch {epoch}", unit="batch", leave=False)
+    for i, (x, y, gap_mask, vtype) in pbar:
         x, y = x.to(device), y.to(device)
         gap_mask = gap_mask.to(device)
         vtype    = vtype.to(device)
@@ -145,10 +149,10 @@ def train_one_epoch(model, loader, optimizer, scheduler,
             else:
                 val_str = ""
 
-            print(f"  epoch {epoch:3d} | step {i+1:5d}/{len(loader)} "
-                  f"| mse {train_mse_avg:.6f}{smooth_str}{val_str} "
-                  f"| grad {grad_norm:.3f} "
-                  f"| lr {scheduler.get_last_lr()[0]:.2e}")
+            tqdm.write(f"  epoch {epoch:3d} | step {i+1:5d}/{len(loader)} "
+                       f"| mse {train_mse_avg:.6f}{smooth_str}{val_str} "
+                       f"| grad {grad_norm:.3f} "
+                       f"| lr {scheduler.get_last_lr()[0]:.2e}")
 
             global_step = global_step_offset + i + 1
             if metrics_path is not None:
@@ -176,7 +180,9 @@ def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument("--csv",       required=True)
+    parser.add_argument("--config",    default=None,
+                        help="Path to YAML config file. CLI args override config values.")
+    parser.add_argument("--csv",       default=None)
     parser.add_argument("--out_dir",   default="runs/ais_transformer")
     parser.add_argument("--id_col",    default="MMSI")
     parser.add_argument("--time_col",  default="BaseDateTime")
@@ -218,7 +224,18 @@ def main():
     parser.add_argument("--val_eval_batches", type=int, default=30,
                         help="Number of val batches per mid-step eval (0 = disable).")
 
+    # Load config file first, then re-parse so CLI args override config values
+    _pre = parser.parse_known_args()[0]
+    if _pre.config:
+        import yaml
+        with open(_pre.config) as _f:
+            _cfg = yaml.safe_load(_f)
+        parser.set_defaults(**{k: v for k, v in _cfg.items() if k != "config"})
+
     args = parser.parse_args()
+
+    if not args.csv:
+        parser.error("--csv is required (either via CLI or --config)")
 
     set_seed(args.seed)
     device = get_device()
@@ -309,6 +326,9 @@ def main():
               f"MSE {bl['mse']:.6f}  ADE {bl['ade_m']:.1f}m  FDE {bl['fde_m']:.1f}m")
         print(f"  Beat this or something is wrong.")
         print("─" * 65 + "\n")
+        import json
+        with open(os.path.join(args.out_dir, "baseline.json"), "w") as _f:
+            json.dump(bl, _f)
 
     best_val_mse = float("inf")
     metrics_path = os.path.join(args.out_dir, "metrics.csv")
@@ -317,7 +337,9 @@ def main():
     with open(metrics_path, "w") as f:
         f.write("global_step,epoch,train_mse,val_mse,val_ade_m,val_fde_m\n")
 
+    training_start = time.time()
     for epoch in range(1, args.epochs + 1):
+        epoch_start = time.time()
         global_step_offset = (epoch - 1) * len(train_loader)
         train_mse = train_one_epoch(
             model, train_loader, optimizer, scheduler,
@@ -370,6 +392,15 @@ def main():
         with open(metrics_path, "a") as f:
             f.write(f"{epoch_step},{epoch},,{mse_str},{ade_str},{fde_str}\n")
 
+        epoch_secs = time.time() - epoch_start
+        elapsed    = time.time() - training_start
+        remaining  = elapsed / epoch * (args.epochs - epoch)
+        def _fmt(s):
+            h, m = divmod(int(s), 3600)
+            m, s = divmod(m, 60)
+            return f"{h}h{m:02d}m{s:02d}s" if h else f"{m}m{s:02d}s"
+        log += (f"  |  epoch {_fmt(epoch_secs)}  elapsed {_fmt(elapsed)}"
+                f"  ETA {_fmt(remaining)}")
         print(log)
 
     print(f"\n  Best val MSE : {best_val_mse:.6f}")

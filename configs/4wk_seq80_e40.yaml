@@ -1,0 +1,28 @@
+# 4 weeks of data (1 week from Jan/Apr/Jul/Oct 2024), seq_len=80
+# Result: CV baseline ADE 45.8m | Model ADE 46.0m (failed to beat baseline)
+# Shorter context = more volatile predictions; seq_len=120 preferred
+
+csv: data/processed/AIS_2024_clean_v2.csv
+out_dir: runs/4wk_seq80_e40
+
+seq_len: 80
+stride: 50
+epochs: 40
+val_frac: 0.15
+seed: 42
+
+d_model: 128
+nhead: 8
+num_layers: 3
+dropout: 0.1
+lambda_smooth: 5.0
+loss_fn: mse
+
+batch_size: 256
+lr: 0.0003
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+max_gap_sec: 600.0
+use_velocity: true
+pred_mode: causal

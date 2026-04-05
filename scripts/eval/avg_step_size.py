@@ -13,7 +13,7 @@ import argparse, sys, os
 import numpy as np
 import torch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from src.data import load_tracks, train_val_split, get_loader, Scalers, Scaler
 from src.metrics import haversine_meters
 

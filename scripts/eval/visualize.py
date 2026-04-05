@@ -30,7 +30,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.data import Scaler, Scalers, load_tracks, make_input, train_val_split
 from src.model import AISTransformer
 

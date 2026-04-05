@@ -29,7 +29,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.data import (CausalDataset, Scaler, Scalers, causal_collate,
                       load_tracks)
 from src.model import AISTransformer

@@ -30,7 +30,7 @@ import torch
 import torch.nn as nn
 
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.data    import (VelScalers, load_tracks, train_val_split, get_vel_loader)
 from src.model   import AISTransformer
 from src.metrics import (evaluate_vel, evaluate_constvel_baseline_vel, sanity_check_vel)

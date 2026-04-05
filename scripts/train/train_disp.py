@@ -51,7 +51,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.data import (Scalers, load_tracks, train_val_split, get_loader)
 from src.model import AISTransformer
 from src.metrics import (evaluate, evaluate_constant_velocity_baseline, sanity_check)

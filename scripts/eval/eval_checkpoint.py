@@ -16,7 +16,7 @@ Usage:
 import argparse, sys, os
 import torch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from src.data import load_tracks, train_val_split, get_loader, Scalers, Scaler
 from src.model import AISTransformer
 from src.metrics import evaluate, evaluate_constant_velocity_baseline, sanity_check

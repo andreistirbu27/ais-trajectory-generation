@@ -15,6 +15,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 
 import matplotlib
@@ -28,6 +29,10 @@ def main():
     p.add_argument("--csv", required=True, help="Path to metrics.csv from training")
     p.add_argument("--out", default=None,
                    help="Output PNG path (default: training_curves.png next to CSV)")
+    p.add_argument("--baseline_ade", type=float, default=None,
+                   help="CV baseline ADE in metres (overrides baseline.json if provided)")
+    p.add_argument("--baseline_fde", type=float, default=None,
+                   help="CV baseline FDE in metres (overrides baseline.json if provided)")
     args = p.parse_args()
 
     df = pd.read_csv(args.csv)
@@ -36,6 +41,18 @@ def main():
         return
 
     out_path = args.out or os.path.join(os.path.dirname(args.csv), "training_curves.png")
+
+    # Load baseline from baseline.json if present (CLI args override)
+    baseline_ade = args.baseline_ade
+    baseline_fde = args.baseline_fde
+    baseline_json = os.path.join(os.path.dirname(args.csv), "baseline.json")
+    if os.path.exists(baseline_json) and (baseline_ade is None or baseline_fde is None):
+        with open(baseline_json) as _f:
+            bl = json.load(_f)
+        if baseline_ade is None:
+            baseline_ade = bl.get("ade_m")
+        if baseline_fde is None:
+            baseline_fde = bl.get("fde_m")
 
     # Mid-step rows: have train_mse, may have val_mse; no ade/fde
     step_df = df[df["train_mse"].notna()].copy()
@@ -59,7 +76,10 @@ def main():
 
     if not step_df.empty and step_df["train_mse"].notna().any():
         ax1.plot(step_df["global_step"], step_df["train_mse"],
-                 label="Train MSE (50-step avg)", color="#1565c0", linewidth=1.2, alpha=0.85)
+                 label="Train MSE (raw)", color="#1565c0", linewidth=0.6, alpha=0.3)
+        smoothed = step_df["train_mse"].rolling(window=20, min_periods=1).mean()
+        ax1.plot(step_df["global_step"], smoothed,
+                 label="Train MSE (smoothed)", color="#1565c0", linewidth=1.6, alpha=0.9)
 
     if not step_df.empty and "val_mse" in step_df.columns and step_df["val_mse"].notna().any():
         ax1.plot(step_df["global_step"], step_df["val_mse"],
@@ -91,6 +111,13 @@ def main():
             ax2.plot(epoch_df["global_step"], epoch_df["val_fde_m"],
                      label="Val FDE (m)", color="#e65100", linewidth=1.6,
                      linestyle="--", marker="o", ms=4)
+
+    if baseline_ade is not None:
+        ax2.axhline(baseline_ade, color="#2e7d32", linewidth=1.2, linestyle=":",
+                    label=f"CV baseline ADE {baseline_ade:.1f}m")
+    if baseline_fde is not None:
+        ax2.axhline(baseline_fde, color="#e65100", linewidth=1.2, linestyle=":",
+                    label=f"CV baseline FDE {baseline_fde:.1f}m")
 
     if best_step is not None:
         ax2.axvline(best_step, color="#555", linewidth=1.0, linestyle="--",

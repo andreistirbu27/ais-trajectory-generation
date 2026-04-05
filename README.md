@@ -3,62 +3,86 @@
 Transformer-based next-step prediction and synthetic maritime trajectory generation from AIS tracklines.
 
 ## Structure
-- `scripts/`      CLI scripts (data preparation, training, visualization)
-- `src/`          reusable modules: data pipeline, model, metrics
-- `notebooks/`    exploratory notebooks
-- `docs/`         progress notes; `docs/references/` for papers and links
-- `data/`         datasets (not tracked)
-- `runs/`         training outputs / checkpoints (not tracked)
+- `scripts/data/`   data pipeline: fetch, prepare, batch pipeline, split utilities
+- `scripts/train/`  training: displacement target (`train_disp.py`), velocity target (`train_vel.py`)
+- `scripts/eval/`   evaluation: metrics, visualizations, diagnostics
+- `src/`            reusable modules: data pipeline, model, metrics
+- `configs/`        YAML experiment configs (one per run)
+- `notebooks/`      exploratory notebooks
+- `docs/references/` papers and links
+- `data/`           datasets (not tracked)
+- `runs/`           training outputs / checkpoints (not tracked)
+- `outputs/`        evaluation plots and diagnostics (not tracked)
 
 ## Data Pipeline
 
 ```
-Raw AIS CSVs (marinecadastre.gov)
-    ↓  scripts/prepare_data.py    # combine multi-day files, filter by type/bbox/quality
-    →  data/processed/<name>_processed.csv
+Raw AIS CSVs (marinecadastre.gov / NOAA)
+    ↓  scripts/data/fetch_ais.py          # download daily zip files
+    ↓  scripts/data/run_pipeline.py       # batch download → filter → merge (weekly batches)
+    ↓  scripts/data/merge_quarters.py     # merge quarterly CSVs into full year
+    ↓  scripts/data/split_by_length.py    # split by track length (le80 / gt80)
+    →  data/processed/AIS_2024_gt80.csv   # training-ready dataset
 ```
 
-### Prepare data (combine + filter)
+### Full-year pipeline (RAM-safe, ~16 GB)
 ```bash
-# Multiple day files — combine first, then filter:
-python3 scripts/prepare_data.py data/raw/AIS_2024_03_26.csv \
-    data/raw/AIS_2024_03_27.csv data/raw/AIS_2024_03_28.csv \
-    -o data/processed/AIS_combined_processed.csv
-
-# Single already-combined file:
-python3 scripts/prepare_data.py data/raw/AIS_mar.csv
-
-# Audit without writing output:
-python3 scripts/prepare_data.py data/raw/AIS_mar.csv --dry-run
+bash scripts/data/run_year_pipeline.sh
 ```
-Keeps vessel types 60–89 (passenger/cargo/tanker), continental US bbox,
-min 50 points per track, max jump 2 km, max gap 60 min, GPS median filter,
-border truncation filter.
+Processes Q1–Q4 sequentially (one quarter at a time), then merges into `AIS_2024_full.csv`.
+Add `--delete_raw` to free disk after each batch (already set in the shell script).
+
+### Prepare a single date range
+```bash
+python3 scripts/data/run_pipeline.py \
+    --start 2024-01-01 --end 2024-03-31 \
+    --proc_dir data/processed/batches/q1 \
+    --out data/processed/AIS_2024_Q1.csv \
+    --batch_start_idx 0 --delete_raw
+```
+
+### Filter defaults (prepare_data.py)
+Vessel types 60–89 (passenger/cargo/tanker), US coastal bbox lon `[-125, -60]` lat `[10, 55]`,
+min 50 pts per track, max jump 2 km, max gap 60 min, turn segmentation at 150°, GPS median filter,
+border truncation, min avg speed 1 km/h, min total distance 5 km.
+
+### Split by track length
+```bash
+python3 scripts/data/split_by_length.py \
+    --csv data/processed/AIS_2024_full.csv \
+    --short_out data/processed/AIS_2024_le80.csv \
+    --long_out  data/processed/AIS_2024_gt80.csv \
+    --threshold 81
+```
 
 ## Training
 
 ```bash
-# Recommended configuration
-python3 scripts/train.py \
-    --csv data/processed/AIS_combined_processed.csv \
+# From config (recommended)
+python3 scripts/train/train_disp.py --config configs/12mo_seq120.yaml
+
+# CLI — full options
+python3 scripts/train/train_disp.py \
+    --csv data/processed/AIS_2024_gt80.csv \
     --epochs 40 --val_frac 0.15 \
     --seq_len 120 --stride 50 \
-    --num_layers 3 --lambda_smooth 5.0
+    --num_layers 3 --lambda_smooth 5.0 \
+    --out_dir runs/12mo_seq120
 ```
+
+CLI args override config file values. Saves `best.pt`, `metrics.csv`, and `baseline.json` to `--out_dir`.
 
 ### Key design decisions
 
 - **Displacement target** `[dlon_norm, dlat_norm]`, not absolute position.
-  The model learns "how far/which direction" — a small-variance target regardless of where on the coast the vessel is.
-  Absolute next position is recovered at eval: `pred_pos = input_pos + disp_scaler.inverse(pred)`.
-- **Three separate scalers**: position (lon/lat), log(dt), and displacement.
-  Velocity input features are normalised by the displacement scaler (same scale as the target).
-- **Vessel type conditioning**: learned embedding (28 AIS codes → 8-dim → d_model) added to hidden state at all timesteps. Covers tanker/cargo/passenger subtypes (codes 60–89).
-- **Causal mask** (default): position t cannot attend to t+1, t+2, … — no future leakage.
-- **Temporal gap mask**: positions with dt > `--max_gap_sec` (default 600 s) are masked so the model cannot attend across large data gaps.
-- **Loss**: `MSE + lambda_smooth * acceleration²` — t=0 excluded from causal loss (velocity feature is always 0 at window start). Smoothness term penalises sudden direction/speed changes.
-- **Cosine LR + warmup**: 5% linear warmup then cosine decay to 1% of peak LR.
-- **Constant-velocity baseline** is printed before training. Beat this to show the transformer adds value.
+  Recovered at eval: `pred_pos = input_pos + disp_scaler.inverse(pred)`.
+- **Three scalers**: position (lon/lat), log(dt), displacement — fitted on train set only.
+- **Vessel type conditioning**: learned embedding (28 AIS codes → 8-dim) added to all timesteps.
+- **Causal mask**: position t cannot attend to future positions — no leakage.
+- **Temporal gap mask**: positions with dt > `--max_gap_sec` (600 s) masked across gaps.
+- **Loss**: `MSE + lambda_smooth × acceleration²`. t=0 excluded from causal loss.
+- **Train/val split by root MMSI** (vessel identity, not segment) — prevents leakage.
+- **Constant-velocity baseline** computed before training and saved to `baseline.json`.
 
 ### Input features (per timestep)
 
@@ -70,16 +94,23 @@ python3 scripts/train.py \
 
 Plus vessel type embedding (8-dim, broadcast over all timesteps).
 
-Target per timestep: `[dlon_norm, dlat_norm]` (normalised displacement to next position).
-
-## Visualization
+## Evaluation
 
 ```bash
-# Distribution map + 25 raw track samples:
-python3 scripts/visualize.py --csv data/processed/AIS_combined_processed.csv
+# Model ADE/FDE vs CV baseline on exact val split
+python3 scripts/eval/eval_checkpoint.py \
+    --csv data/processed/AIS_2024_gt80.csv \
+    --checkpoint runs/12mo_seq120/best.pt
 
-# Also generate model prediction panels:
-python3 scripts/visualize.py \
-    --csv data/processed/AIS_combined_processed.csv \
-    --checkpoint runs/ais_transformer/best.pt
+# Plot training curves (can run mid-training)
+python3 scripts/eval/plot_curves.py --csv runs/12mo_seq120/metrics.csv
+
+# Visualize tracks and predictions
+python3 scripts/eval/visualize.py \
+    --csv data/processed/AIS_2024_Q1.csv \
+    --checkpoint runs/12mo_seq120/best.pt \
+    --out_dir outputs/viz
+
+# Dataset diagnostics
+python3 scripts/eval/diagnose_data.py --csv data/processed/AIS_2024_gt80.csv
 ```

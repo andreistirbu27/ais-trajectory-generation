@@ -1,0 +1,5 @@
+run,data,seq_len,stride,epochs,num_layers,lambda_smooth,cv_ade_m,model_ade_m,cv_fde_m,model_fde_m,val_mse
+4wk_seq120_e30,AIS_2024_clean_v2.csv,120,50,29,3,5.0,42.4,40.7,,,0.055447
+4wk_seq80_e40,AIS_2024_clean_v2.csv,80,50,40,3,5.0,45.8,46.0,,,0.059745
+12mo_seq120,AIS_2024_gt80.csv,120,50,in progress,3,5.0,50.7,,54.8,,
+12mo_seq80,AIS_2024_gt80.csv,80,50,queued,3,5.0,,,,,

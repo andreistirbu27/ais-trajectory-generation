@@ -29,6 +29,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from tqdm import tqdm
+
+try:
+    import contextily as ctx
+    _HAS_CTX = True
+except ImportError:
+    _HAS_CTX = False
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.data import Scaler, Scalers, load_tracks, make_input, train_val_split
@@ -149,6 +156,12 @@ def _draw_track_panel(ax, pts, vid, vtype_code, split_label, cmap):
     ax.tick_params(labelsize=5)
     ax.set_xlabel("Lon", fontsize=6)
     ax.set_ylabel("Lat", fontsize=6)
+    if _HAS_CTX:
+        try:
+            ctx.add_basemap(ax, crs="EPSG:4326", zoom="auto",
+                            source=ctx.providers.OpenStreetMap.Mapnik, alpha=0.5)
+        except Exception:
+            pass  # no internet or tile fetch failed — silently skip
 
 
 def plot_tracks(train_tracks, train_vtypes, val_tracks, val_vtypes,
@@ -171,7 +184,7 @@ def plot_tracks(train_tracks, train_vtypes, val_tracks, val_vtypes,
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 5, nrows * 5))
     axes_flat = np.array(axes).reshape(-1)
 
-    for i, (vid, pts, vtype_code, split_label) in enumerate(panels):
+    for i, (vid, pts, vtype_code, split_label) in enumerate(tqdm(panels, desc="Rendering track panels", unit="panel")):
         cmap = plt.cm.Blues if split_label == "TRAIN" else plt.cm.Reds
         _draw_track_panel(axes_flat[i], pts, vid, vtype_code, split_label, cmap)
 
@@ -213,7 +226,7 @@ def plot_predictions(model, val_tracks, val_vtypes, vtype_vocab, scalers,
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 5, nrows * 4.2))
     axes_flat = np.array(axes).reshape(-1)
 
-    for i, (vid, pts) in enumerate(chosen):
+    for i, (vid, pts) in enumerate(tqdm(chosen, desc="Rendering prediction panels", unit="panel")):
         ax = axes_flat[i]
         T = len(pts)
 

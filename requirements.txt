@@ -7,3 +7,4 @@ pyyaml
 contextily
 rasterio<1.5
 scikit-learn
+geopandas

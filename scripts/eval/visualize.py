@@ -39,6 +39,7 @@ except ImportError:
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.data import Scaler, Scalers, load_tracks, make_input, train_val_split
+from src.data_lh import LHScalers, load_tracks_lh, make_input_lh
 from src.model import AISTransformer
 
 
@@ -62,12 +63,22 @@ def haversine_m(lat1, lon1, lat2, lon2):
 def load_checkpoint(ckpt_path, device):
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     a = ckpt["args"]
-    scalers = Scalers(
-        pos   = Scaler(mean=ckpt["pos_mean"],   std=ckpt["pos_std"]),
-        logdt = Scaler(mean=ckpt["logdt_mean"], std=ckpt["logdt_std"]),
-        disp  = Scaler(mean=ckpt["disp_mean"],  std=ckpt["disp_std"]),
-    )
-    input_dim = 5 if a.get("use_velocity", True) else 3
+    is_lh = "lh_mean" in ckpt
+    if is_lh:
+        scalers = LHScalers(
+            pos   = Scaler(mean=ckpt["pos_mean"],   std=ckpt["pos_std"]),
+            logdt = Scaler(mean=ckpt["logdt_mean"], std=ckpt["logdt_std"]),
+            disp  = Scaler(mean=ckpt["disp_mean"],  std=ckpt["disp_std"]),
+            lh    = Scaler(mean=ckpt["lh_mean"],    std=ckpt["lh_std"]),
+        )
+        input_dim = 3 + (2 if a.get("use_velocity", True) else 0) + 3
+    else:
+        scalers = Scalers(
+            pos   = Scaler(mean=ckpt["pos_mean"],   std=ckpt["pos_std"]),
+            logdt = Scaler(mean=ckpt["logdt_mean"], std=ckpt["logdt_std"]),
+            disp  = Scaler(mean=ckpt["disp_mean"],  std=ckpt["disp_std"]),
+        )
+        input_dim = 5 if a.get("use_velocity", True) else 3
     model = AISTransformer(
         input_dim=input_dim,
         d_model=a.get("d_model", 128),
@@ -239,7 +250,10 @@ def plot_predictions(model, val_tracks, val_vtypes, vtype_vocab, scalers,
         true_next = window[-1, :2]
         last_pos  = ctx[-1, :2]
 
-        x_feat = make_input(ctx, scalers, use_vel)
+        if isinstance(scalers, LHScalers):
+            x_feat = make_input_lh(ctx, scalers, use_vel)
+        else:
+            x_feat = make_input(ctx, scalers, use_vel)
         x_t    = torch.tensor(x_feat).unsqueeze(1).to(device)
         dt     = ctx[:, 2]
         gm     = torch.tensor(dt > gap_sec, dtype=torch.bool).unsqueeze(0).to(device)
@@ -310,6 +324,159 @@ def plot_predictions(model, val_tracks, val_vtypes, vtype_vocab, scalers,
     print(f"  Saved: {out_path}")
 
 
+# ── Figure 4: multi-step rollout panels ─────────────────────────────────────
+
+@torch.no_grad()
+def plot_rollout(model, val_tracks, val_vtypes, vtype_vocab, scalers,
+                 model_args, device, n_vessels, rollout_steps, out_path, seed=42):
+    rng       = random.Random(seed)
+    seq_len   = model_args.get("seq_len", 120)
+    use_vel   = model_args.get("use_velocity", True)
+    gap_sec   = model_args.get("max_gap_sec", 600.0)
+    is_lh     = isinstance(scalers, LHScalers)
+
+    min_len = seq_len + rollout_steps
+    eligible = [(vid, pts) for vid, pts in val_tracks.items() if len(pts) >= min_len]
+    if not eligible:
+        print(f"  No eligible val vessels for rollout plot (need >= {min_len} pings).")
+        return
+
+    rng.shuffle(eligible)
+    chosen = eligible[:n_vessels]
+
+    ncols = 4
+    nrows = math.ceil(len(chosen) / ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 5, nrows * 4.2))
+    axes_flat = np.array(axes).reshape(-1)
+
+    from matplotlib.lines import Line2D
+
+    for i, (vid, pts) in enumerate(tqdm(chosen, desc="Rendering rollout panels", unit="panel")):
+        ax = axes_flat[i]
+        T = len(pts)
+
+        # Pick a start so we have seq_len context + rollout_steps future
+        hi = T - min_len
+        start = rng.randint(0, hi) if hi > 0 else 0
+
+        context = pts[start: start + seq_len]
+        future  = pts[start + seq_len: start + seq_len + rollout_steps]
+
+        last_pos = context[-1, :2]
+        raw_code = val_vtypes.get(vid, 0)
+        vtype_idx = vtype_vocab.get(raw_code, 0)
+        median_dt = float(np.median(context[1:, 2]))
+
+        # ── Model rollout ──────────────────────────────────────────────
+        ctx_copy = context.copy()
+        model_path = []
+        for _ in range(rollout_steps):
+            if is_lh:
+                x_feat = make_input_lh(ctx_copy, scalers, use_vel)
+            else:
+                x_feat = make_input(ctx_copy, scalers, use_vel)
+            x_t = torch.tensor(x_feat, dtype=torch.float32).unsqueeze(1).to(device)
+            gm = torch.tensor(ctx_copy[:, 2] > gap_sec, dtype=torch.bool).unsqueeze(0).to(device)
+            vt = torch.tensor([vtype_idx], dtype=torch.long).to(device)
+            out = model(x_t, gap_mask=gm, vessel_type=vt)
+            disp_norm = out[-1, 0].cpu().numpy()
+            disp_geo = scalers.disp.inverse(disp_norm.reshape(1, 2))[0]
+            next_pos = ctx_copy[-1, :2] + disp_geo
+            model_path.append(next_pos.copy())
+            # Shift window: drop oldest, append predicted
+            n_cols = ctx_copy.shape[1]
+            new_row = np.zeros(n_cols, dtype=np.float32)
+            new_row[0], new_row[1], new_row[2] = next_pos[0], next_pos[1], median_dt
+            if is_lh and n_cols > 3:
+                new_row[3:] = ctx_copy[-1, 3:]  # carry forward lighthouse dists
+            ctx_copy = np.concatenate([ctx_copy[1:], new_row.reshape(1, -1)], axis=0)
+        model_path = np.array(model_path)
+
+        # ── CV rollout ─────────────────────────────────────────────────
+        cv_disp = context[-1, :2] - context[-2, :2]
+        cv_path = []
+        pos = last_pos.copy()
+        for _ in range(rollout_steps):
+            pos = pos + cv_disp
+            cv_path.append(pos.copy())
+        cv_path = np.array(cv_path)
+
+        # ── True future ────────────────────────────────────────────────
+        true_path = future[:, :2]
+
+        # ── Errors ─────────────────────────────────────────────────────
+        model_dists = np.array([
+            haversine_m(true_path[j, 1], true_path[j, 0],
+                        model_path[j, 1], model_path[j, 0])
+            for j in range(rollout_steps)
+        ])
+        cv_dists = np.array([
+            haversine_m(true_path[j, 1], true_path[j, 0],
+                        cv_path[j, 1], cv_path[j, 0])
+            for j in range(rollout_steps)
+        ])
+
+        # ── Draw context track ─────────────────────────────────────────
+        lons, lats = context[:, 0], context[:, 1]
+        n_seg = len(lons) - 1
+        for j in range(n_seg):
+            alpha = 0.2 + 0.6 * (j / max(n_seg - 1, 1))
+            ax.plot(lons[j:j+2], lats[j:j+2],
+                    color=plt.cm.Blues(0.3 + 0.5 * j / max(n_seg - 1, 1)),
+                    linewidth=0.8, alpha=alpha)
+
+        ax.scatter(*last_pos, s=70, color="navy", zorder=6, marker="o")
+
+        # Draw true future path
+        full_true = np.vstack([last_pos.reshape(1, 2), true_path])
+        ax.plot(full_true[:, 0], full_true[:, 1], color="#2e7d32", linewidth=2.0,
+                alpha=0.8, zorder=5)
+        ax.scatter(true_path[:, 0], true_path[:, 1], s=30, color="#2e7d32",
+                   marker="*", zorder=7)
+
+        # Draw model rollout path
+        full_model = np.vstack([last_pos.reshape(1, 2), model_path])
+        ax.plot(full_model[:, 0], full_model[:, 1], color="#c62828", linewidth=1.8,
+                alpha=0.8, zorder=5, linestyle="--")
+        ax.scatter(model_path[:, 0], model_path[:, 1], s=25, color="#c62828",
+                   marker="^", zorder=7)
+
+        # Draw CV rollout path
+        full_cv = np.vstack([last_pos.reshape(1, 2), cv_path])
+        ax.plot(full_cv[:, 0], full_cv[:, 1], color="#e65100", linewidth=1.5,
+                alpha=0.7, zorder=4, linestyle=":")
+        ax.scatter(cv_path[:, 0], cv_path[:, 1], s=20, color="#e65100",
+                   marker="D", zorder=6)
+
+        vname = VTYPE_NAME.get(raw_code, f"Type {raw_code}")
+        ax.set_title(f"{vid}  [{vname}]", fontsize=7, pad=3)
+
+        handles = [
+            Line2D([0], [0], color="#2e7d32", linewidth=2, label=f"True (H={rollout_steps})"),
+            Line2D([0], [0], color="#c62828", linewidth=1.8, linestyle="--",
+                   label=f"Model ADE {model_dists.mean():.0f}m"),
+            Line2D([0], [0], color="#e65100", linewidth=1.5, linestyle=":",
+                   label=f"CV ADE {cv_dists.mean():.0f}m"),
+        ]
+        ax.legend(handles=handles, fontsize=6, loc="best", framealpha=0.7)
+        ax.tick_params(labelsize=6)
+        ax.set_xlabel("Lon", fontsize=7)
+        ax.set_ylabel("Lat", fontsize=7)
+
+    for ax in axes_flat[len(chosen):]:
+        ax.set_visible(False)
+
+    fig.suptitle(
+        f"Multi-step rollout ({rollout_steps} steps) — model vs const-vel vs truth\n"
+        "Blue = context  |  Green = true future  |  Red dashed = model  |  Orange dotted = CV",
+        fontsize=10, y=1.01,
+    )
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved: {out_path}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -321,10 +488,14 @@ def main():
     p.add_argument("--n_train",    type=int,   default=20,    help="Train track panels in viz_tracks")
     p.add_argument("--n_val",      type=int,   default=5,     help="Val track panels in viz_tracks")
     p.add_argument("--n_pred",     type=int,   default=12,    help="Prediction panels in viz_predictions")
+    p.add_argument("--rollout_steps", type=int, default=10,   help="Number of autoregressive steps for rollout plot")
     p.add_argument("--out_dir",    default="runs/ais_transformer")
+    p.add_argument("--lighthouse_cols", nargs="*", default=None,
+                   help="Lighthouse distance columns (e.g. lh_dist_1_km lh_dist_2_km lh_dist_3_km). "
+                        "Auto-detected from checkpoint if omitted.")
     p.add_argument("--plot",       nargs="+",  default=["distribution", "tracks", "predictions"],
-                   choices=["distribution", "tracks", "predictions"],
-                   help="Which plots to generate (default: all three)")
+                   choices=["distribution", "tracks", "predictions", "rollout"],
+                   help="Which plots to generate (default: distribution, tracks, predictions)")
     args = p.parse_args()
 
     plots = set(args.plot)
@@ -332,8 +503,21 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     device = torch.device("cpu")
 
+    # Auto-detect lighthouse columns from checkpoint if not given
+    lh_cols = args.lighthouse_cols
+    if lh_cols is None and args.checkpoint:
+        ckpt_peek = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+        if "lh_mean" in ckpt_peek:
+            lh_cols = ckpt_peek["args"].get("lighthouse_cols",
+                        ["lh_dist_1_km", "lh_dist_2_km", "lh_dist_3_km"])
+            print(f"Auto-detected lighthouse checkpoint — loading columns: {lh_cols}")
+        del ckpt_peek
+
     print("Loading data...")
-    tracks, vessel_types = load_tracks(args.csv)
+    if lh_cols:
+        tracks, vessel_types = load_tracks_lh(args.csv, lh_cols)
+    else:
+        tracks, vessel_types = load_tracks(args.csv)
     train_tracks, train_vtypes, val_tracks, val_vtypes = train_val_split(
         tracks, vessel_types, args.val_frac, args.seed)
     print(f"  Train: {len(train_tracks):,}  Val: {len(val_tracks):,}")
@@ -361,6 +545,20 @@ def main():
                              seed=args.seed)
         else:
             print("\nNo --checkpoint given — skipping prediction plot.")
+
+    if "rollout" in plots:
+        if args.checkpoint:
+            if "predictions" not in plots:
+                print(f"\nLoading checkpoint: {args.checkpoint}")
+                model, scalers, vtype_vocab, model_args, epoch = load_checkpoint(args.checkpoint, device)
+                print(f"  Epoch {epoch}")
+            print(f"\nPlotting {args.rollout_steps}-step rollout...")
+            plot_rollout(model, val_tracks, val_vtypes, vtype_vocab, scalers,
+                         model_args, device, args.n_pred, args.rollout_steps,
+                         os.path.join(args.out_dir, "viz_rollout.png"),
+                         seed=args.seed)
+        else:
+            print("\nNo --checkpoint given — skipping rollout plot.")
 
     print("\nDone.")
 

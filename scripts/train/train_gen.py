@@ -122,7 +122,8 @@ def compute_loss(pred_deltas, batch, scalers, lambda_end, lambda_smooth):
 def train_one_epoch(model, loader, optimizer, scheduler, device, grad_clip,
                     epoch, scalers, lambda_end, lambda_smooth,
                     val_loader=None, val_eval_batches=30,
-                    global_step_offset=0, metrics_path=None, log_every=50):
+                    global_step_offset=0, metrics_path=None, log_every=50,
+                    ss_prob=0.0):
     model.train()
     running = {"delta": 0, "endpoint": 0, "smooth": 0, "total": 0}
     n = 0
@@ -139,6 +140,9 @@ def train_one_epoch(model, loader, optimizer, scheduler, device, grad_clip,
             end=batch["end_norm"],
             vessel_type=batch["vessel_type"],
             target_traj=batch["traj_norm"],
+            ss_prob=ss_prob,
+            delta_scaler=scalers.delta if ss_prob > 0 else None,
+            pos_scaler=scalers.pos if ss_prob > 0 else None,
         )
 
         loss, loss_dict = compute_loss(
@@ -268,6 +272,12 @@ def main():
     parser.add_argument("--lambda_smooth", type=float, default=1.0,
         help="Weight for smoothness regularization")
 
+    # Scheduled sampling
+    parser.add_argument("--ss_warmup_epochs", type=int, default=0,
+        help="Epochs of pure teacher forcing before scheduled sampling ramp (0=disabled)")
+    parser.add_argument("--ss_max_prob", type=float, default=0.0,
+        help="Max scheduled sampling probability (0=disabled, e.g. 0.5)")
+
     # Logging
     parser.add_argument("--val_eval_batches", type=int, default=30)
     parser.add_argument("--log_every",        type=int, default=50)
@@ -372,6 +382,12 @@ def main():
         epoch_start = time.time()
         global_step_offset = (epoch - 1) * len(train_loader)
 
+        # Scheduled sampling probability ramp
+        ss_prob = 0.0
+        if args.ss_max_prob > 0 and epoch > args.ss_warmup_epochs:
+            ramp_epochs = args.epochs - args.ss_warmup_epochs
+            ss_prob = args.ss_max_prob * min(1.0, (epoch - args.ss_warmup_epochs) / max(ramp_epochs, 1))
+
         train_losses = train_one_epoch(
             model, train_loader, optimizer, scheduler, device,
             args.grad_clip, epoch, scalers,
@@ -381,6 +397,7 @@ def main():
             global_step_offset=global_step_offset,
             metrics_path=metrics_path,
             log_every=args.log_every,
+            ss_prob=ss_prob,
         )
 
         log = (f"Epoch {epoch:3d}/{args.epochs} "

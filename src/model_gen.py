@@ -11,6 +11,7 @@ Inference: autoregressive — own predictions fed back as decoder input.
 
 import math
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -123,14 +124,21 @@ class TrajectoryGenerator(nn.Module):
         end: torch.Tensor,           # (B, 2)
         vessel_type: torch.Tensor,   # (B,)
         target_traj: torch.Tensor,   # (T, B, 2) normalized positions
+        ss_prob: float = 0.0,        # scheduled sampling probability
+        delta_scaler=None,           # needed for scheduled sampling
+        pos_scaler=None,             # needed for scheduled sampling
     ) -> torch.Tensor:
-        """Teacher-forcing forward pass.
+        """Teacher-forcing forward pass with optional scheduled sampling.
 
-        The decoder receives ground truth positions at all T steps and
-        predicts the delta from each position to the next.
+        When ss_prob > 0, at each step t there is a probability ss_prob that
+        the model's own predicted position is used instead of the ground truth
+        position. This reduces the train/inference mismatch (exposure bias).
 
         Args:
             target_traj: (T, B, 2) full ground truth trajectory (normalized)
+            ss_prob: probability of using model's own prediction at each step
+            delta_scaler: required when ss_prob > 0
+            pos_scaler: required when ss_prob > 0
 
         Returns:
             pred_deltas: (T-1, B, 2) predicted normalized displacements
@@ -142,25 +150,64 @@ class TrajectoryGenerator(nn.Module):
         # Encode conditioning
         memory = self.encode_condition(start, end, vessel_type)  # (3, B, d_model)
 
-        # Build decoder input: positions 0..T-2 (predict delta to 1..T-1)
-        # We feed all T positions but only use outputs 0..T-2 for delta prediction
-        fracs = torch.linspace(0, 1, T, device=device)          # (T,)
-        fracs = fracs.unsqueeze(1).expand(T, B).unsqueeze(2)     # (T, B, 1)
+        if ss_prob <= 0 or delta_scaler is None or pos_scaler is None:
+            # Pure teacher forcing (original fast path)
+            fracs = torch.linspace(0, 1, T, device=device)
+            fracs = fracs.unsqueeze(1).expand(T, B).unsqueeze(2)     # (T, B, 1)
 
-        dec_input = torch.cat([target_traj, fracs], dim=2)       # (T, B, 3)
-        dec_input = self.waypoint_proj(dec_input)                # (T, B, d_model)
-        dec_input = self.pos_enc(dec_input)                      # (T, B, d_model)
+            dec_input = torch.cat([target_traj, fracs], dim=2)       # (T, B, 3)
+            dec_input = self.waypoint_proj(dec_input)
+            dec_input = self.pos_enc(dec_input)
 
-        # Causal mask: position t can only attend to 0..t
-        causal_mask = self._causal_mask(T, device)
+            causal_mask = self._causal_mask(T, device)
+            out = self.decoder(dec_input, memory, tgt_mask=causal_mask)
+            pred_deltas = self.delta_head(out[:-1])                  # (T-1, B, 2)
+            return pred_deltas
 
-        # Decode
-        out = self.decoder(dec_input, memory, tgt_mask=causal_mask)  # (T, B, d_model)
+        # Scheduled sampling: step-by-step with mixing
+        delta_mean = torch.tensor(delta_scaler.mean, device=device, dtype=torch.float32)
+        delta_std = torch.tensor(delta_scaler.std, device=device, dtype=torch.float32)
+        pos_mean = torch.tensor(pos_scaler.mean, device=device, dtype=torch.float32)
+        pos_std = torch.tensor(pos_scaler.std, device=device, dtype=torch.float32)
 
-        # Predict deltas from positions 0..T-2 → positions 1..T-1
-        pred_deltas = self.delta_head(out[:-1])                  # (T-1, B, 2)
+        # Build mixed input trajectory: GT or model's own prediction at each step
+        mixed_traj = [target_traj[0]]  # step 0 is always GT (start position)
+        pred_deltas_list = []
 
-        return pred_deltas
+        for t in range(T - 1):
+            # Build decoder input up to step t
+            traj_so_far = torch.stack(mixed_traj, dim=0)         # (t+1, B, 2)
+            t_cur = traj_so_far.shape[0]
+
+            fracs = torch.linspace(0, t / max(T - 1, 1), t_cur, device=device)
+            fracs = fracs.unsqueeze(1).expand(t_cur, B).unsqueeze(2)
+
+            dec_input = torch.cat([traj_so_far, fracs], dim=2)
+            dec_input = self.waypoint_proj(dec_input)
+            dec_input = self.pos_enc(dec_input)
+
+            causal_mask = self._causal_mask(t_cur, device)
+            out = self.decoder(dec_input, memory, tgt_mask=causal_mask)
+
+            pred_delta_norm = self.delta_head(out[-1])            # (B, 2)
+            pred_deltas_list.append(pred_delta_norm)
+
+            # Decide next input: GT or model's prediction
+            use_model = torch.rand(B, device=device) < ss_prob   # (B,)
+
+            # Compute model's predicted next position
+            cur_pos_norm = traj_so_far[-1]                        # (B, 2)
+            cur_pos_raw = cur_pos_norm * pos_std + pos_mean
+            delta_raw = pred_delta_norm * delta_std + delta_mean
+            next_pos_raw = cur_pos_raw + delta_raw
+            next_pos_model = (next_pos_raw - pos_mean) / pos_std  # (B, 2)
+
+            # Mix: use model prediction where use_model is True, GT otherwise
+            gt_next = target_traj[t + 1]                          # (B, 2)
+            next_pos = torch.where(use_model.unsqueeze(1), next_pos_model, gt_next)
+            mixed_traj.append(next_pos)
+
+        return torch.stack(pred_deltas_list, dim=0)              # (T-1, B, 2)
 
     @torch.no_grad()
     def generate(
@@ -230,4 +277,23 @@ class TrajectoryGenerator(nn.Module):
 
             generated.append(next_pos_norm.unsqueeze(0))
 
-        return torch.cat(generated, dim=0)  # (n_steps, B, 2)
+        trajectory = torch.cat(generated, dim=0)  # (n_steps, B, 2)
+
+        # Linear endpoint correction: distribute error evenly across points
+        if pos_scaler is not None:
+            traj_np = trajectory.cpu().numpy()                    # (T, B, 2)
+            end_np = end.cpu().numpy()                            # (B, 2)
+            # Convert to raw space
+            T_len, B_len, _ = traj_np.shape
+            traj_raw = pos_scaler.inverse(traj_np.reshape(-1, 2)).reshape(T_len, B_len, 2)
+            end_raw = pos_scaler.inverse(end_np)
+            # Compute error at endpoint
+            error = end_raw - traj_raw[-1]                        # (B, 2)
+            # Linear ramp: 0 at start, full correction at end
+            fracs = np.linspace(0, 1, T_len).reshape(-1, 1, 1)   # (T, 1, 1)
+            traj_corrected = traj_raw + fracs * error[np.newaxis]
+            # Back to normalized space
+            traj_norm = pos_scaler.transform(traj_corrected.reshape(-1, 2)).reshape(T_len, B_len, 2)
+            trajectory = torch.tensor(traj_norm, device=device, dtype=torch.float32)
+
+        return trajectory

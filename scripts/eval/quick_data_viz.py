@@ -204,7 +204,7 @@ def plot_individual_tracks(trajs, vtypes, out_path, n=16, seed=42):
     elif ncols == 1:
         axes = axes[:, None]
 
-    for idx_i in range(nrows * ncols):
+    for idx_i in tqdm(range(nrows * ncols), desc="Plotting tracks"):
         ax = axes[idx_i // ncols, idx_i % ncols]
         if idx_i >= len(picks):
             ax.set_visible(False)
@@ -230,6 +230,19 @@ def plot_individual_tracks(trajs, vtypes, out_path, n=16, seed=42):
         ax.set_title(f"{vname} | {dist_km:.0f} km", fontsize=9)
         ax.tick_params(labelsize=7)
         ax.set_aspect("equal")
+
+        # Add map tiles with coastlines
+        try:
+            import contextily as ctx
+            # Add padding around track extent
+            pad = 0.5  # degrees
+            ax.set_xlim(traj[:, 0].min() - pad, traj[:, 0].max() + pad)
+            ax.set_ylim(traj[:, 1].min() - pad, traj[:, 1].max() + pad)
+            ctx.add_basemap(ax, crs="EPSG:4326",
+                            source=ctx.providers.CartoDB.Positron,
+                            zoom="auto", alpha=0.6)
+        except Exception:
+            pass
 
     fig.suptitle("Individual Track Samples (green=start, red=end)", fontsize=13, y=1.01)
     fig.tight_layout()
@@ -271,6 +284,8 @@ def main():
     parser.add_argument("--out_dir", default="outputs/data_viz")
     parser.add_argument("--n_plot", type=int, default=2000,
         help="Max tracks on the overview map")
+    parser.add_argument("--n_individual", type=int, default=16,
+        help="Number of individual track plots")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -296,7 +311,7 @@ def main():
                        os.path.join(args.out_dir, "distributions.png"))
     plot_individual_tracks(trajs, vtypes,
                            os.path.join(args.out_dir, "individual_tracks.png"),
-                           seed=args.seed)
+                           n=args.n_individual, seed=args.seed)
     plot_vessel_type_breakdown(vtypes,
                                os.path.join(args.out_dir, "vessel_types.png"))
 

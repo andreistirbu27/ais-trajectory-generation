@@ -56,7 +56,8 @@ def get_device() -> torch.device:
 
 # ── Loss computation ─────────────────────────────────────────────────────────
 
-def compute_loss(pred_deltas, batch, scalers, lambda_end, lambda_smooth):
+def compute_loss(pred_deltas, batch, scalers, lambda_end, lambda_smooth,
+                 input_traj=None):
     """Compute full trajectory generation loss.
 
     Args:
@@ -65,13 +66,30 @@ def compute_loss(pred_deltas, batch, scalers, lambda_end, lambda_smooth):
         scalers: TrajGenScalers
         lambda_end: weight for endpoint loss
         lambda_smooth: weight for smoothness loss
+        input_traj: (T, B, 2) what the decoder was fed (None or target_traj
+                    for TF). When different from target_traj (scheduled
+                    sampling), target deltas are recomputed as
+                    target_raw[t+1] - input_raw[t].
 
     Returns:
         loss, loss_dict with individual components
     """
-    gt_deltas = batch["deltas_norm"]     # (T-1, B, 2)
     start_norm = batch["start_norm"]     # (B, 2)
     end_norm = batch["end_norm"]         # (B, 2)
+
+    delta_mean = torch.tensor(scalers.delta.mean, device=pred_deltas.device)
+    delta_std  = torch.tensor(scalers.delta.std,  device=pred_deltas.device)
+    pos_mean   = torch.tensor(scalers.pos.mean,   device=pred_deltas.device)
+    pos_std    = torch.tensor(scalers.pos.std,    device=pred_deltas.device)
+
+    target_traj = batch["traj_norm"]     # (T, B, 2)
+    if input_traj is None or input_traj is target_traj:
+        gt_deltas = batch["deltas_norm"]                            # (T-1, B, 2)
+    else:
+        target_raw = target_traj * pos_std + pos_mean               # (T, B, 2)
+        input_raw  = input_traj  * pos_std + pos_mean               # (T, B, 2)
+        gt_deltas_raw = target_raw[1:] - input_raw[:-1]             # (T-1, B, 2)
+        gt_deltas = (gt_deltas_raw - delta_mean) / delta_std
 
     # L_delta: primary reconstruction (Huber)
     l_delta = F.huber_loss(pred_deltas, gt_deltas, delta=1.0)
@@ -80,13 +98,6 @@ def compute_loss(pred_deltas, batch, scalers, lambda_end, lambda_smooth):
     # Cumulative sum of deltas in normalized space, starting from start position
     # pred_deltas: (T-1, B, 2) → transpose to (B, T-1, 2) for cumsum
     pred_deltas_b = pred_deltas.permute(1, 0, 2)                # (B, T-1, 2)
-
-    # To compute endpoint in normalized pos space, we need to convert deltas
-    # from delta-normalized space to pos-normalized space
-    delta_mean = torch.tensor(scalers.delta.mean, device=pred_deltas.device)
-    delta_std  = torch.tensor(scalers.delta.std,  device=pred_deltas.device)
-    pos_mean   = torch.tensor(scalers.pos.mean,   device=pred_deltas.device)
-    pos_std    = torch.tensor(scalers.pos.std,     device=pred_deltas.device)
 
     # Inverse delta normalization → raw deltas → cumsum → normalize to pos space
     pred_deltas_raw = pred_deltas_b * delta_std + delta_mean     # (B, T-1, 2)
@@ -135,7 +146,7 @@ def train_one_epoch(model, loader, optimizer, scheduler, device, grad_clip,
         batch = {k: v.to(device) for k, v in batch.items()}
 
         optimizer.zero_grad()
-        pred_deltas = model(
+        pred_deltas, input_traj = model(
             start=batch["start_norm"],
             end=batch["end_norm"],
             vessel_type=batch["vessel_type"],
@@ -146,7 +157,8 @@ def train_one_epoch(model, loader, optimizer, scheduler, device, grad_clip,
         )
 
         loss, loss_dict = compute_loss(
-            pred_deltas, batch, scalers, lambda_end, lambda_smooth)
+            pred_deltas, batch, scalers, lambda_end, lambda_smooth,
+            input_traj=input_traj)
 
         loss.backward()
         grad_norm = nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
@@ -194,7 +206,7 @@ def _val_subsample(model, val_loader, n_batches, device, scalers,
             if j >= n_batches:
                 break
             batch = {k: v.to(device) for k, v in batch.items()}
-            pred_deltas = model(
+            pred_deltas, _ = model(
                 start=batch["start_norm"], end=batch["end_norm"],
                 vessel_type=batch["vessel_type"], target_traj=batch["traj_norm"])
             loss, _ = compute_loss(pred_deltas, batch, scalers,
@@ -213,7 +225,7 @@ def evaluate_full(model, loader, device, scalers, lambda_end, lambda_smooth):
     with torch.no_grad():
         for batch in loader:
             batch = {k: v.to(device) for k, v in batch.items()}
-            pred_deltas = model(
+            pred_deltas, _ = model(
                 start=batch["start_norm"], end=batch["end_norm"],
                 vessel_type=batch["vessel_type"], target_traj=batch["traj_norm"])
             _, loss_dict = compute_loss(pred_deltas, batch, scalers,
@@ -253,6 +265,8 @@ def main():
     # Model
     parser.add_argument("--d_model",            type=int,   default=128)
     parser.add_argument("--nhead",              type=int,   default=8)
+    parser.add_argument("--num_encoder_layers", type=int,   default=0,
+        help="Transformer encoder layers for conditioning tokens (0=none)")
     parser.add_argument("--num_decoder_layers", type=int,   default=4)
     parser.add_argument("--dim_feedforward",    type=int,   default=512)
     parser.add_argument("--dropout",            type=float, default=0.1)
@@ -277,6 +291,10 @@ def main():
         help="Epochs of pure teacher forcing before scheduled sampling ramp (0=disabled)")
     parser.add_argument("--ss_max_prob", type=float, default=0.0,
         help="Max scheduled sampling probability (0=disabled, e.g. 0.5)")
+
+    # Resume
+    parser.add_argument("--resume", default=None,
+        help="Path to checkpoint to resume training from (e.g. runs/trajgen_v5/best.pt)")
 
     # Logging
     parser.add_argument("--val_eval_batches", type=int, default=30)
@@ -348,11 +366,20 @@ def main():
     model = TrajectoryGenerator(
         d_model=args.d_model,
         nhead=args.nhead,
+        num_encoder_layers=args.num_encoder_layers,
         num_decoder_layers=args.num_decoder_layers,
         dim_feedforward=args.dim_feedforward,
         dropout=args.dropout,
         num_vessel_types=num_vessel_types,
     ).to(device)
+
+    # torch.compile for faster training (requires PyTorch 2.0+)
+    if hasattr(torch, "compile"):
+        try:
+            model = torch.compile(model)
+            print("  torch.compile enabled")
+        except Exception as e:
+            print(f"  torch.compile skipped: {e}")
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"\n  Params  : {n_params:,}")
@@ -369,16 +396,51 @@ def main():
     scheduler = build_scheduler(optimizer, warmup_steps, total_steps)
     print(f"  Steps   : {total_steps:,} total | {warmup_steps:,} warmup\n")
 
+    # ── Resume from checkpoint ───────────────────────────────────────────────
+    start_epoch = 1
+    best_val_loss = float("inf")
+
+    if args.resume:
+        print(f"\n  Resuming from: {args.resume}")
+        ckpt = torch.load(args.resume, map_location=device, weights_only=False)
+
+        # Load model weights (handle torch.compile prefix)
+        state_dict = ckpt["model"]
+        if any(k.startswith("_orig_mod.") for k in state_dict):
+            state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
+        # Get the underlying model if torch.compile wrapped it
+        raw_model = model._orig_mod if hasattr(model, "_orig_mod") else model
+        raw_model.load_state_dict(state_dict)
+
+        # Load optimizer state
+        if "optimizer" in ckpt:
+            optimizer.load_state_dict(ckpt["optimizer"])
+
+        # Resume from next epoch
+        start_epoch = ckpt["epoch"] + 1
+        best_val_loss = ckpt.get("metrics", {}).get("total", float("inf"))
+
+        # Advance scheduler to the correct step
+        resume_step = ckpt["epoch"] * len(train_loader)
+        for _ in range(resume_step):
+            scheduler.step()
+
+        print(f"  Resumed at epoch {start_epoch}, best_val_loss={best_val_loss:.6f}")
+        print(f"  Scheduler advanced to step {resume_step}\n")
+
     # ── Metrics CSV ──────────────────────────────────────────────────────────
     metrics_path = os.path.join(args.out_dir, "metrics.csv")
-    with open(metrics_path, "w") as f:
-        f.write("global_step,epoch,train_loss,val_loss,val_delta,val_endpoint\n")
+    if args.resume and os.path.exists(metrics_path):
+        # Append to existing CSV
+        print(f"  Appending to existing {metrics_path}")
+    else:
+        with open(metrics_path, "w") as f:
+            f.write("global_step,epoch,train_loss,val_loss,val_delta,val_endpoint\n")
 
-    best_val_loss = float("inf")
     training_start = time.time()
 
     # ── Training ─────────────────────────────────────────────────────────────
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(start_epoch, args.epochs + 1):
         epoch_start = time.time()
         global_step_offset = (epoch - 1) * len(train_loader)
 

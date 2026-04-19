@@ -31,6 +31,7 @@ class TrajectoryGenerator(nn.Module):
         self,
         d_model: int = 128,
         nhead: int = 8,
+        num_encoder_layers: int = 0,
         num_decoder_layers: int = 4,
         dim_feedforward: int = 512,
         dropout: float = 0.1,
@@ -53,9 +54,21 @@ class TrajectoryGenerator(nn.Module):
         # Learnable token-type embeddings for the 3 encoder tokens
         self.token_type_emb = nn.Embedding(3, d_model)
 
+        # Optional transformer encoder for conditioning token interaction
+        self.num_encoder_layers = num_encoder_layers
+        if num_encoder_layers > 0:
+            encoder_layer = nn.TransformerEncoderLayer(
+                d_model=d_model,
+                nhead=nhead,
+                dim_feedforward=dim_feedforward,
+                dropout=dropout,
+                batch_first=False,
+            )
+            self.encoder = nn.TransformerEncoder(encoder_layer, num_encoder_layers)
+
         # ── Decoder: waypoint generation ─────────────────────────────────────
-        # Input per decoder step: [lon_norm, lat_norm, progress_fraction] → 3 dims
-        self.waypoint_proj = nn.Linear(3, d_model)
+        # Input per decoder step: [lon_norm, lat_norm, progress, sin_bearing, cos_bearing] → 5 dims
+        self.waypoint_proj = nn.Linear(5, d_model)
         self.pos_enc = PositionalEncoding(d_model, dropout, max_len=max_seq_len)
 
         decoder_layer = nn.TransformerDecoderLayer(
@@ -116,7 +129,24 @@ class TrajectoryGenerator(nn.Module):
         memory = torch.stack([tok_start, tok_end, tok_vtype], dim=0)        # (3, B, d_model)
         memory = memory + type_embs.unsqueeze(1)                            # broadcast over B
 
+        if self.num_encoder_layers > 0:
+            memory = self.encoder(memory)                                   # (3, B, d_model)
+
         return memory
+
+    def _bearing_features(self, traj, end):
+        """Compute sin/cos bearing from each position to endpoint.
+
+        Args:
+            traj: (T, B, 2) positions [lon_norm, lat_norm]
+            end: (B, 2) endpoint [lon_norm, lat_norm]
+
+        Returns:
+            sin_b, cos_b: each (T, B, 1)
+        """
+        diff = end.unsqueeze(0) - traj                              # (T, B, 2) [dlon, dlat]
+        angle = torch.atan2(diff[..., 1], diff[..., 0])             # (T, B)
+        return torch.sin(angle).unsqueeze(2), torch.cos(angle).unsqueeze(2)
 
     def forward(
         self,
@@ -127,22 +157,25 @@ class TrajectoryGenerator(nn.Module):
         ss_prob: float = 0.0,        # scheduled sampling probability
         delta_scaler=None,           # needed for scheduled sampling
         pos_scaler=None,             # needed for scheduled sampling
-    ) -> torch.Tensor:
-        """Teacher-forcing forward pass with optional scheduled sampling.
+    ):
+        """Teacher-forcing forward pass with optional two-pass scheduled sampling.
 
-        When ss_prob > 0, at each step t there is a probability ss_prob that
-        the model's own predicted position is used instead of the ground truth
-        position. This reduces the train/inference mismatch (exposure bias).
+        When ss_prob > 0, runs two parallel teacher-forcing passes:
+          Pass 1 (no_grad): TF over GT to get one-step-ahead model predictions.
+          Pass 2 (with grad): TF over a mixed trajectory where each step (except
+            step 0) is replaced by the model's own prediction from pass 1 with
+            probability ss_prob. The loss is computed on pass 2's deltas
+            relative to the mixed input.
 
-        Args:
-            target_traj: (T, B, 2) full ground truth trajectory (normalized)
-            ss_prob: probability of using model's own prediction at each step
-            delta_scaler: required when ss_prob > 0
-            pos_scaler: required when ss_prob > 0
+        This replaces the O(T) sequential decoder calls of step-by-step SS with
+        2 parallel passes, bringing per-batch cost back near TF levels.
 
         Returns:
             pred_deltas: (T-1, B, 2) predicted normalized displacements
-                         (delta from step t to step t+1, for t=0..T-2)
+            input_traj:  (T, B, 2) what the decoder was actually fed (either
+                         target_traj for TF, or mixed_traj for SS). The loss
+                         needs this to recompute target deltas relative to
+                         the mixed inputs.
         """
         T, B, _ = target_traj.shape
         device = target_traj.device
@@ -151,63 +184,59 @@ class TrajectoryGenerator(nn.Module):
         memory = self.encode_condition(start, end, vessel_type)  # (3, B, d_model)
 
         if ss_prob <= 0 or delta_scaler is None or pos_scaler is None:
-            # Pure teacher forcing (original fast path)
+            # Pure teacher forcing (fast path)
             fracs = torch.linspace(0, 1, T, device=device)
             fracs = fracs.unsqueeze(1).expand(T, B).unsqueeze(2)     # (T, B, 1)
 
-            dec_input = torch.cat([target_traj, fracs], dim=2)       # (T, B, 3)
+            sin_b, cos_b = self._bearing_features(target_traj, end)  # (T, B, 1) each
+            dec_input = torch.cat([target_traj, fracs, sin_b, cos_b], dim=2)  # (T, B, 5)
             dec_input = self.waypoint_proj(dec_input)
             dec_input = self.pos_enc(dec_input)
 
             causal_mask = self._causal_mask(T, device)
             out = self.decoder(dec_input, memory, tgt_mask=causal_mask)
             pred_deltas = self.delta_head(out[:-1])                  # (T-1, B, 2)
-            return pred_deltas
+            return pred_deltas, target_traj
 
-        # Scheduled sampling: step-by-step with mixing
+        # Two-pass scheduled sampling
         delta_mean = torch.tensor(delta_scaler.mean, device=device, dtype=torch.float32)
-        delta_std = torch.tensor(delta_scaler.std, device=device, dtype=torch.float32)
-        pos_mean = torch.tensor(pos_scaler.mean, device=device, dtype=torch.float32)
-        pos_std = torch.tensor(pos_scaler.std, device=device, dtype=torch.float32)
+        delta_std  = torch.tensor(delta_scaler.std,  device=device, dtype=torch.float32)
+        pos_mean   = torch.tensor(pos_scaler.mean,   device=device, dtype=torch.float32)
+        pos_std    = torch.tensor(pos_scaler.std,    device=device, dtype=torch.float32)
 
-        # Build mixed input trajectory: GT or model's own prediction at each step
-        mixed_traj = [target_traj[0]]  # step 0 is always GT (start position)
-        pred_deltas_list = []
+        fracs = torch.linspace(0, 1, T, device=device)
+        fracs = fracs.unsqueeze(1).expand(T, B).unsqueeze(2)
+        causal_mask = self._causal_mask(T, device)
 
-        for t in range(T - 1):
-            # Build decoder input up to step t
-            traj_so_far = torch.stack(mixed_traj, dim=0)         # (t+1, B, 2)
-            t_cur = traj_so_far.shape[0]
+        # Pass 1: teacher-forced forward, no grad — produces model's one-step predictions
+        with torch.no_grad():
+            sin_b_1, cos_b_1 = self._bearing_features(target_traj, end)
+            dec_input_1 = torch.cat([target_traj, fracs, sin_b_1, cos_b_1], dim=2)
+            dec_input_1 = self.waypoint_proj(dec_input_1)
+            dec_input_1 = self.pos_enc(dec_input_1)
+            out_1 = self.decoder(dec_input_1, memory, tgt_mask=causal_mask)
+            pred_deltas_1 = self.delta_head(out_1[:-1])                    # (T-1, B, 2)
 
-            fracs = torch.linspace(0, t / max(T - 1, 1), t_cur, device=device)
-            fracs = fracs.unsqueeze(1).expand(t_cur, B).unsqueeze(2)
+            # Reconstruct model's predicted next positions (in normalized pos space)
+            target_raw = target_traj * pos_std + pos_mean                  # (T, B, 2)
+            pred_deltas_1_raw = pred_deltas_1 * delta_std + delta_mean     # (T-1, B, 2)
+            model_next_raw = target_raw[:-1] + pred_deltas_1_raw           # (T-1, B, 2)
+            model_next_norm = (model_next_raw - pos_mean) / pos_std        # (T-1, B, 2)
 
-            dec_input = torch.cat([traj_so_far, fracs], dim=2)
-            dec_input = self.waypoint_proj(dec_input)
-            dec_input = self.pos_enc(dec_input)
+        # Build mixed trajectory: step 0 always GT; later steps mix per-sample
+        use_model = (torch.rand(T - 1, B, device=device) < ss_prob).unsqueeze(2)
+        mixed_tail = torch.where(use_model, model_next_norm, target_traj[1:])
+        mixed_traj = torch.cat([target_traj[:1], mixed_tail], dim=0)       # (T, B, 2)
 
-            causal_mask = self._causal_mask(t_cur, device)
-            out = self.decoder(dec_input, memory, tgt_mask=causal_mask)
+        # Pass 2: teacher-forced forward with grad, over the mixed trajectory
+        sin_b_2, cos_b_2 = self._bearing_features(mixed_traj, end)
+        dec_input_2 = torch.cat([mixed_traj, fracs, sin_b_2, cos_b_2], dim=2)
+        dec_input_2 = self.waypoint_proj(dec_input_2)
+        dec_input_2 = self.pos_enc(dec_input_2)
+        out_2 = self.decoder(dec_input_2, memory, tgt_mask=causal_mask)
+        pred_deltas_2 = self.delta_head(out_2[:-1])                        # (T-1, B, 2)
 
-            pred_delta_norm = self.delta_head(out[-1])            # (B, 2)
-            pred_deltas_list.append(pred_delta_norm)
-
-            # Decide next input: GT or model's prediction
-            use_model = torch.rand(B, device=device) < ss_prob   # (B,)
-
-            # Compute model's predicted next position
-            cur_pos_norm = traj_so_far[-1]                        # (B, 2)
-            cur_pos_raw = cur_pos_norm * pos_std + pos_mean
-            delta_raw = pred_delta_norm * delta_std + delta_mean
-            next_pos_raw = cur_pos_raw + delta_raw
-            next_pos_model = (next_pos_raw - pos_mean) / pos_std  # (B, 2)
-
-            # Mix: use model prediction where use_model is True, GT otherwise
-            gt_next = target_traj[t + 1]                          # (B, 2)
-            next_pos = torch.where(use_model.unsqueeze(1), next_pos_model, gt_next)
-            mixed_traj.append(next_pos)
-
-        return torch.stack(pred_deltas_list, dim=0)              # (T-1, B, 2)
+        return pred_deltas_2, mixed_traj
 
     @torch.no_grad()
     def generate(
@@ -247,7 +276,8 @@ class TrajectoryGenerator(nn.Module):
             fracs = torch.linspace(0, t / max(n_steps - 1, 1), T_cur, device=device)
             fracs = fracs.unsqueeze(1).expand(T_cur, B).unsqueeze(2)
 
-            dec_input = torch.cat([traj_so_far, fracs], dim=2)  # (T_cur, B, 3)
+            sin_b, cos_b = self._bearing_features(traj_so_far, end)
+            dec_input = torch.cat([traj_so_far, fracs, sin_b, cos_b], dim=2)  # (T_cur, B, 5)
             dec_input = self.waypoint_proj(dec_input)
             dec_input = self.pos_enc(dec_input)
 

@@ -1,0 +1,37 @@
+# Trajectory Generation v4 — bigger model + bearing features + encoder
+# Changes from MVP: d_model 128→256, ffn 512→1024, 2 encoder layers,
+#                    bearing-to-endpoint features in decoder input (5-dim)
+#
+# Usage:
+#   python3 scripts/train/train_gen.py --config configs/trajgen_v4.yaml
+
+data_npz: data/processed/trajgen_128.npz
+out_dir: runs/trajgen_v4
+
+# Dataset
+val_frac: 0.15
+seed: 42
+
+# Model
+d_model: 256
+nhead: 8
+num_encoder_layers: 2
+num_decoder_layers: 4
+dim_feedforward: 1024
+dropout: 0.1
+
+# Training
+batch_size: 64
+epochs: 60
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+
+# Loss weights
+lambda_end: 10.0
+lambda_smooth: 1.0
+
+# Logging
+val_eval_batches: 30
+log_every: 100

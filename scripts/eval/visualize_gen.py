@@ -57,11 +57,15 @@ def load_checkpoint(checkpoint_path, device):
     )
     model = TrajectoryGenerator(
         d_model=args.d_model, nhead=args.nhead,
+        num_encoder_layers=getattr(args, "num_encoder_layers", 0),
         num_decoder_layers=args.num_decoder_layers,
         dim_feedforward=args.dim_feedforward, dropout=args.dropout,
         num_vessel_types=ckpt["num_vessel_types"],
     ).to(device)
-    model.load_state_dict(ckpt["model"])
+    state_dict = ckpt["model"]
+    if any(k.startswith("_orig_mod.") for k in state_dict):
+        state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
+    model.load_state_dict(state_dict)
     model.eval()
     return model, scalers, ckpt["vtype_vocab"], ckpt.get("n_resample", 128), args
 

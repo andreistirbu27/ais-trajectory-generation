@@ -258,6 +258,10 @@ def main():
     # Resume
     parser.add_argument("--resume", default=None)
 
+    # torch.compile (MPS + this model's type-id gather triggers an inductor
+    # shader-codegen bug; pass --no_compile to skip compilation).
+    parser.add_argument("--no_compile", action="store_true", default=False)
+
     # Logging
     parser.add_argument("--val_eval_batches", type=int, default=30)
     parser.add_argument("--log_every",        type=int, default=100)
@@ -364,12 +368,14 @@ def main():
         n_points=n_resample,
     ).to(device)
 
-    if hasattr(torch, "compile"):
+    if hasattr(torch, "compile") and not args.no_compile:
         try:
             model = torch.compile(model)
             print("  torch.compile enabled")
         except Exception as e:
             print(f"  torch.compile skipped: {e}")
+    else:
+        print("  torch.compile disabled (--no_compile)")
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"\n  Params  : {n_params:,}")

@@ -443,11 +443,11 @@ def main():
     train_loader = get_obstacle_trajgen_loader(
         train_traj, train_vt, vtype_vocab, scalers, obs_cfg,
         args.batch_size, shuffle=True, drop_last=True,
-        num_workers=args.num_workers, seed=args.seed)
+        num_workers=args.num_workers, seed=args.seed, deterministic=False)
     val_loader = get_obstacle_trajgen_loader(
         val_traj, val_vt, vtype_vocab, scalers, obs_cfg,
         args.batch_size, shuffle=False, drop_last=False,
-        num_workers=args.num_workers, seed=args.seed + 1) if len(val_traj) > 0 else None
+        num_workers=args.num_workers, seed=args.seed + 1, deterministic=True) if len(val_traj) > 0 else None
 
     print(f"  Train batches : {len(train_loader):,}")
     if val_loader:

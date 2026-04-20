@@ -1,0 +1,55 @@
+# Trajectory Generation v7 — Obstacle-Conditioned (post leak-fix)
+# Identical hyperparameters to v6. The change is in the data pipeline:
+# ObstacleTrajectoryGenDataset now re-samples obstacle placements every epoch
+# for the train loader (deterministic=False). Val stays deterministic so val
+# loss remains comparable across epochs.
+#
+# v6 fit fixed per-sample obstacle placements (seed = 42 + idx, same every
+# epoch for 60 epochs) and generalized poorly to the val set's different
+# placements. v7 isolates the effect of that fix with no other change.
+#
+# Usage:
+#   python3 scripts/train/train_gen_obs.py --config configs/obstacle/trajgen_v7_obstacle.yaml
+
+data_npz: data/processed/trajgen_128.npz
+out_dir: runs/trajgen_v7_obstacle
+
+# Dataset
+val_frac: 0.15
+seed: 42
+
+# Model
+d_model: 256
+nhead: 8
+num_encoder_layers: 2
+num_decoder_layers: 4
+dim_feedforward: 1024
+dropout: 0.1
+
+# Training
+batch_size: 64
+epochs: 60
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+
+# Loss weights
+lambda_end: 10.0
+lambda_smooth: 1.0
+lambda_obstacle: 50.0
+obstacle_margin_km: 5.0
+
+# Scheduled sampling — disabled (unchanged from v6; v8 will enable).
+ss_warmup_epochs: 999
+ss_max_prob: 0.0
+
+# Obstacles
+max_obstacles: 3
+p_obstacle: 0.5
+obstacle_radius_min_km: 10
+obstacle_radius_max_km: 100
+
+# Logging
+val_eval_batches: 30
+log_every: 100

@@ -168,6 +168,7 @@ class ObstacleTrajectoryGenDataset(Dataset):
         scalers: TrajGenScalers,
         obstacle_config: ObstacleConfig,
         seed: int = 42,
+        deterministic: bool = True,
     ):
         self.trajectories = trajectories
         self.vessel_types = vessel_types
@@ -176,6 +177,7 @@ class ObstacleTrajectoryGenDataset(Dataset):
         self.augmenter = ObstacleAugmenter(obstacle_config)
         self.max_obstacles = obstacle_config.max_obstacles
         self.seed = seed
+        self.deterministic = deterministic
 
     def __len__(self):
         return len(self.trajectories)
@@ -195,8 +197,14 @@ class ObstacleTrajectoryGenDataset(Dataset):
         deltas = np.diff(traj, axis=0)
         deltas_norm = self.scalers.delta.transform(deltas)
 
-        # Generate obstacles in raw space
-        rng = np.random.RandomState(self.seed + idx)
+        # Generate obstacles in raw space.
+        # Val uses deterministic=True so val loss is comparable across epochs.
+        # Train uses deterministic=False so obstacles re-sample every epoch —
+        # otherwise the model memorizes fixed (traj, obstacles) pairs.
+        if self.deterministic:
+            rng = np.random.RandomState(self.seed + idx)
+        else:
+            rng = np.random.RandomState()
         obstacles_raw, obstacle_mask = self.augmenter.generate(traj, rng)
         # obstacles_raw: (K, 3) [center_lon, center_lat, radius_deg]
 
@@ -261,11 +269,12 @@ def get_obstacle_trajgen_loader(
     drop_last: bool = True,
     num_workers: int = 0,
     seed: int = 42,
+    deterministic: bool = True,
 ) -> DataLoader:
     """Create a DataLoader for obstacle-conditioned trajectory generation."""
     ds = ObstacleTrajectoryGenDataset(
         trajectories, vessel_types, vtype_vocab, scalers,
-        obstacle_config, seed=seed,
+        obstacle_config, seed=seed, deterministic=deterministic,
     )
     return DataLoader(
         ds,

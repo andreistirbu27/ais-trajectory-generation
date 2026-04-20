@@ -1,0 +1,56 @@
+# Trajectory Generation v9 — Retrieval-Augmented
+# Extends v5-era architecture with K retrieved historical routes as
+# additional encoder tokens. Decoder cross-attends to them alongside
+# the base (start, end, vtype) tokens.
+#
+# Motivation: retrieval-only baseline (scripts/eval/retrieval_baseline.py)
+# hit ADE 5489 m — 19% better than v5's 6753 m. v9 learns to tune retrieved
+# templates to the exact query (expected to drive FDE → 0 while keeping ADE).
+#
+# Usage:
+#   python3 scripts/train/train_gen_retrieval.py \
+#       --config configs/retrieval/trajgen_v9_retrieval.yaml
+
+data_npz: data/processed/trajgen_128.npz
+out_dir: runs/trajgen_v9_retrieval
+
+# Dataset
+val_frac: 0.15
+seed: 42
+
+# Retrieval
+k_retrieval: 5            # number of nearest-neighbor routes per query
+retrieval_vtype_weight: 0.5  # degrees-equivalent; learn the rest via attention
+exclude_self: true        # at training, don't retrieve the query itself
+knn_cache: data/processed/trajgen_128_knn_k5.npz  # pre-built index cache
+
+# Route encoding (how to compress each (128, 2) retrieved route → d_model)
+route_encoder: mean_pool  # options: mean_pool | linear_flatten | tiny_transformer
+
+# Model (same as v5 except for extra encoder tokens)
+d_model: 256
+nhead: 8
+num_encoder_layers: 2
+num_decoder_layers: 4
+dim_feedforward: 1024
+dropout: 0.1
+
+# Training
+batch_size: 64
+epochs: 60
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+
+# Loss weights (same as MVP — worked best on plain generation)
+lambda_end: 10.0
+lambda_smooth: 1.0
+
+# Scheduled sampling — disabled initially (v5 showed no help)
+ss_warmup_epochs: 999
+ss_max_prob: 0.0
+
+# Logging
+val_eval_batches: 30
+log_every: 100

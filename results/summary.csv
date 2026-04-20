@@ -1,4 +1,19 @@
-run,data,seq_len,stride,epochs,num_layers,lambda_smooth,cv_ade_m,model_ade_m,cv_fde_m,model_fde_m,val_mse
-12mo_seq120,AIS_2024_gt80.csv,120,50,20,3,5.0,50.7,50.8,54.8,56.6,0.914987
-4wk_seq120_e30,AIS_2024_clean_v2.csv,120,50,29,3,5.0,42.4,42.7,,46.5,0.055447
-4wk_seq80_e40,AIS_2024_clean_v2.csv,80,50,40,3,5.0,45.8,46.0,,51.3,0.059745
+run,type,data,config,epochs,cv_ade_m,model_ade_m,cv_fde_m,model_fde_m,val_mse,val_delta,val_endpoint,val_obstacle,notes
+12mo_seq120,disp,AIS_2024_gt80.csv,configs/displacement/12mo_seq120.yaml,20,50.7,50.8,54.8,56.6,0.914987,,,,baseline-parity; no improvement over CV
+12mo_seq120_bs384,disp,AIS_2024_gt80.csv,configs/displacement/12mo_seq120_bs384.yaml,5,50.7,60.0,54.8,66.3,0.925400,,,,partial run; LR decay too fast at bs=384
+12mo_seq120_lh,disp,AIS_2024_gt80_lh.csv,configs/displacement/12mo_seq120_lh.yaml,15,50.7,55.6,54.8,58.2,0.751708,,,,lighthouse features did not help
+12mo_seq120_opensea,disp,AIS_2024_gt80_opensea.csv,configs/displacement/12mo_seq120_opensea.yaml,40,47.0,47.5,50.0,52.8,0.624664,,,,best open-sea disp; still baseline-parity
+12mo_seq120_opensea_lh,disp,AIS_2024_gt80_opensea_lh.csv,configs/displacement/12mo_seq120_opensea_lh.yaml,40,47.0,48.6,50.0,55.1,0.582168,,,,lighthouse hurts vs opensea without
+4wk_seq120_e30,disp,AIS_2024_clean_v2.csv,configs/displacement/4wk_seq120_e30.yaml,30,42.4,43.2,,46.8,0.055977,,,,old 4-week subset
+4wk_seq80_e40,disp,AIS_2024_clean_v2.csv,configs/displacement/4wk_seq80_e40.yaml,40,45.8,46.0,,51.3,0.059745,,,,old 4-week subset
+trajgen_mvp,trajgen,trajgen_128.npz,configs/trajgen/trajgen_mvp.yaml,45,,,,,,0.0858,0.0006,,ADE 6.8km beats great-circle 8.2km by 17%
+trajgen_mvp_100km,trajgen,trajgen_128.npz,configs/trajgen/trajgen_mvp_100km.yaml,23,,,,,,0.1129,0.0045,,100km+ filtered subset
+trajgen_v2,trajgen,trajgen_128.npz,configs/trajgen/trajgen_v2.yaml,30,,,,,,0.1049,0.0010,,lambda_end=50 hurt ADE vs MVP
+trajgen_v3,trajgen,trajgen_128.npz,configs/trajgen/trajgen_v3.yaml,20,,,,,,0.1053,0.0012,,v2 + SS; no plateau break
+trajgen_v4,trajgen,trajgen_128.npz,configs/trajgen/trajgen_v4.yaml,60,,,,,,0.0724,0.0021,,bigger model + bearing + encoder; best trajgen
+trajgen_v5,trajgen,trajgen_128.npz,configs/trajgen/trajgen_v5.yaml,60,8226,6753,,,,0.0743,0.0017,,"v4+SS; ADE=MVP (arch ladder null); 17.9% over GC"
+trajgen_v6_obstacle,obstacle,trajgen_128.npz,configs/obstacle/trajgen_v6_obstacle.yaml,49,8226,7202,,,,0.0731,0.0111,0.00004,"LEAK: avoidance rate 0.0%; penalty never fired in training; clean ADE +7% regression vs v5"
+trajgen_v7_obstacle,obstacle,trajgen_128.npz,configs/obstacle/trajgen_v7_obstacle.yaml,20,,,,,,0.1609,0.3908,0.0005,"FAILED — train/val divergence + endpoint instability: val_loss 0.72→14.29 (ep5→ep17), val_endpoint 0.06→1.39 oscillating, val_delta stable ~0.15. val_obstacle stayed ~5e-4 — penalty never fired. Augmenter is structurally broken: lateral obstacle placement means GT has no avoidance content, so obstacle tokens are empty-signal noise the decoder misuses, amplified by 128-step AR integration."
+trajgen_v8_obstacle,obstacle,trajgen_128.npz,,,,,,,,,,,"PARKED — v7 invalidates the plan. p_obstacle=1.0 + SS cannot help when the augmenter signal is structurally empty (lateral obstacles, GT unchanged). Reviving obstacle work requires synthesized detour GTs (bent great-circle / RRT / learned detour generator) — v10-class effort."
+retrieval_baseline_top1,baseline,trajgen_128.npz,,,8397,5489,,3306,,,,,"zero-training KNN positions-only top-1; 19% better than v5 — v9 gate PASSED"
+trajgen_v9_retrieval,retrieval,trajgen_128.npz,configs/retrieval/trajgen_v9_retrieval.yaml,,,,,,,,,,"APPROVED — learned retrieval augmentation; architecture in src/model_gen_retrieval.py (sketch)"

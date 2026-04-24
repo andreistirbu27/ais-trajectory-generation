@@ -1,0 +1,68 @@
+# v12 — pointer over K-ring of a partitioned water graph
+#
+# Replaces v11's per-step Halton candidate pool (which was catastrophically
+# mismatched to the dataset's 0.34 km median step) with a pointer over a
+# precomputed water cell graph at the same 0.005° resolution as the land SDF
+# (~0.47 × 0.55 km cells). At each step, candidates = K-ring (Chebyshev
+# distance ≤ K) of current cell + END. Water-validity is structural: cells
+# are pre-filtered water-only, so adjacency masking guarantees 0% strict
+# land-crossing rate at inference.
+#
+# K=10 covers 99% of observed GT cell transitions (Exp 1):
+#   P50=1  P75=2  P90=4  P95=5  P99=10  P99.9=26  max=43
+#
+# Gates (Exp 2 → v12-lite):
+#   - Top-1 cell accuracy > 60% after epoch 10
+#   - Val CE trending down monotonically
+# Gates (Exp 3 → v12 full, 40 epochs):
+#   - ADE < 6207 m (beat v10)
+#   - ADE long < 18785 m (match retrieval-top-1)
+#   - traj_crossing_rate @ 0 km = 0.0% (structural)
+
+data_npz:      data/processed/trajgen_128.npz
+quantized_npz: data/processed/trajgen_128_cells_005deg.npz
+water_graph:   data/processed/water_graph_005deg.npz
+knn_cache:     data/processed/trajgen_128_knn_k5.npz
+out_dir:       runs/trajgen_v12_lite_v2
+
+# Split
+val_frac: 0.15
+seed:     42
+
+# Retrieval (reuses v9 KNN cache)
+k_retrieval:            5
+retrieval_vtype_weight: 0.5
+t_retr:                 32
+
+# Pointer
+K: 10                   # Chebyshev K-ring radius; covers 99% of GT transitions
+
+# Model (same size as v10 / v11)
+d_model:            256
+nhead:              8
+num_encoder_layers: 2
+num_decoder_layers: 3
+dim_feedforward:    1024
+dropout:            0.1
+k_past:             null     # full causal — v11 confirmed windowed hurt short routes
+
+# Training
+batch_size:     32
+epochs:         15          # v12-lite-v2: faster iteration, self-loop ignored in CE
+lr:             0.0003
+weight_decay:   0.0001
+grad_clip:      1.0
+warmup_frac:    0.05
+num_workers:    0
+
+# Loss
+lambda_offset: 1.0
+lambda_smooth: 0.5
+
+# Compile
+no_compile: true            # torch.compile has known MPS issues with gather+masked_fill
+                            # in this code path; enable after a clean run.
+
+# Logging
+val_eval_batches: 30
+log_every:        100

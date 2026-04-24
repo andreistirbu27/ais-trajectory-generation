@@ -1,0 +1,71 @@
+# v11 — pointer transformer with water-valid candidate selection (lite variant)
+#
+# v11 replaces v10's regression head with a pointer over K geometrically
+# sampled, water-pre-filtered candidate waypoints. Every segment and every
+# waypoint is in water by construction of the candidate pool, so the land
+# constraint is structural — no soft penalty, no hard projection.
+#
+# v11-lite: segment check + offset head enabled; no scheduled sampling,
+# no storm conditioning. Full causal mask (k_past=null) — v10's k_past=32
+# regressed short-bucket ADE.
+#
+# Gates (from plan, Exp 2):
+#   - traj_crossing_rate = 0.00% (strict, threshold=0 km) by construction.
+#   - ADE < 6584 m (beat v10 overall).
+#   - ADE_short < 4160 m (beat v10 short bucket).
+
+data_npz:   data/processed/trajgen_128.npz
+knn_cache:  data/processed/trajgen_128_knn_k5.npz
+land_sdf:   data/processed/land_sdf_005deg.npz
+out_dir:    runs/trajgen_v11_lite
+
+# Dataset / split
+val_frac: 0.15
+seed:     42
+
+# Retrieval (reuses v9 KNN cache)
+k_retrieval:            5
+retrieval_vtype_weight: 0.5
+exclude_self:           true
+t_retr:                 32
+
+# Candidates
+n_candidates:       32
+cand_cone_deg:      60.0
+cand_d_min_km:      3.0
+cand_d_max_km:      25.0
+water_threshold_km: 2.0
+n_segment_samples:  5
+use_segment_check:  true
+use_storm_check:    false
+
+# Model (same size as v10 defaults)
+d_model:            256
+nhead:              8
+num_encoder_layers: 2
+num_decoder_layers: 3
+dim_feedforward:    1024
+dropout:            0.1
+k_past:             null     # full causal — v10's 32 hurt short routes
+
+# Training
+batch_size:     32
+epochs:         40
+lr:             0.0003
+weight_decay:   0.0001
+warmup_frac:    0.05
+grad_clip:      1.0
+num_workers:    4             # candidate gen is CPU numpy; parallelize
+
+# Loss
+lambda_offset: 1.0
+lambda_smooth: 0.5
+
+# SS (v11-full only; off for lite)
+use_scheduled_sampling: false
+ss_warmup_epochs:       10
+ss_max_prob:            0.3
+
+# Log
+val_eval_batches: 30
+log_every:        100

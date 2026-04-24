@@ -74,14 +74,7 @@ def load_checkpoint(checkpoint_path, device):
 
 
 def generate_with_retrieval(model, val_traj, val_vt, train_traj, val_knn,
-                             vtype_vocab, scalers, n_resample, device, n_eval=None):
-    if n_eval is not None and n_eval < len(val_traj):
-        rng = np.random.RandomState(42)
-        idx = rng.choice(len(val_traj), n_eval, replace=False)
-        val_traj = val_traj[idx]
-        val_vt = val_vt[idx]
-        val_knn = val_knn[idx]
-
+                             vtype_vocab, scalers, n_resample, device):
     N = len(val_traj)
     gt_traj = val_traj.copy()
     pred_traj = np.zeros_like(gt_traj)
@@ -161,9 +154,18 @@ def main():
     val_knn = knn["val_knn"]
     print(f"Loaded KNN cache: val_knn {val_knn.shape}\n")
 
+    # Subsample val set once (shared across model / retrieval-top-1 / GC)
+    if args.n_eval is not None and args.n_eval < len(val_traj):
+        rng = np.random.RandomState(42)
+        idx = rng.choice(len(val_traj), args.n_eval, replace=False)
+        val_traj = val_traj[idx]
+        val_vt = val_vt[idx]
+        val_knn = val_knn[idx]
+        print(f"Subsampled to {args.n_eval} val samples (seed=42)\n")
+
     pred_traj, gt_traj = generate_with_retrieval(
         model, val_traj, val_vt, train_traj, val_knn,
-        vtype_vocab, scalers, n_resample, device, n_eval=args.n_eval)
+        vtype_vocab, scalers, n_resample, device)
 
     compute_frechet = not args.no_frechet
 
@@ -172,40 +174,67 @@ def main():
     print("=" * 65)
     model_metrics = evaluate_generation(pred_traj, gt_traj,
                                          compute_frechet=compute_frechet)
-    for k, v in model_metrics.items():
-        if isinstance(v, float):
-            print(f"  {k:.<30} {v:>10.2f}")
-        else:
-            print(f"  {k:.<30} {v}")
+    _print_metrics(model_metrics)
+
+    print(f"\n{'='*65}")
+    print("  RETRIEVAL-TOP-1 BASELINE (zero training)")
+    print("=" * 65)
+    retr_pred = train_traj[val_knn[:, 0]]   # top-1 neighbor as prediction
+    retr_metrics = evaluate_generation(retr_pred, gt_traj,
+                                        compute_frechet=compute_frechet)
+    _print_metrics(retr_metrics)
 
     print(f"\n{'='*65}")
     print("  GREAT-CIRCLE BASELINE")
     print("=" * 65)
     gc_metrics = evaluate_great_circle_baseline(gt_traj)
-    for k, v in gc_metrics.items():
-        if isinstance(v, float):
-            print(f"  {k:.<30} {v:>10.2f}")
-        else:
-            print(f"  {k:.<30} {v}")
+    _print_metrics(gc_metrics)
 
     print(f"\n{'='*65}")
-    print("  COMPARISON (model vs great-circle)")
+    print("  COMPARISON  (lower is better)")
     print("=" * 65)
-    for metric in ["ade_m", "fde_m", "endpoint_error_m"]:
-        m_val  = model_metrics.get(metric, float("nan"))
-        gc_val = gc_metrics.get(metric,    float("nan"))
-        diff_pct = 100 * (m_val - gc_val) / gc_val if gc_val != 0 else 0
-        better = "better" if m_val < gc_val else "worse"
-        print(f"  {metric:.<25} model={m_val:>10.1f}  "
-              f"GC={gc_val:>10.1f}  ({diff_pct:+.1f}% {better})")
+    compare_metrics = ["ade_m", "normalized_ade", "fde_m", "endpoint_error_m",
+                       "ade_short_m", "ade_medium_m", "ade_long_m"]
     if compute_frechet:
-        m_f = model_metrics.get("frechet_m", float("nan"))
-        gc_f = gc_metrics.get("frechet_m",    float("nan"))
-        diff_pct = 100 * (m_f - gc_f) / gc_f if gc_f != 0 else 0
-        better = "better" if m_f < gc_f else "worse"
-        print(f"  {'frechet_m':.<25} model={m_f:>10.1f}  "
-              f"GC={gc_f:>10.1f}  ({diff_pct:+.1f}% {better})")
+        compare_metrics.append("frechet_m")
+    header = f"  {'metric':<22} {'model':>10} {'retr-top1':>12} {'GC':>10}"
+    print(header)
+    print("  " + "-" * (len(header) - 2))
+    for metric in compare_metrics:
+        m = model_metrics.get(metric, float("nan"))
+        r = retr_metrics.get(metric,  float("nan"))
+        g = gc_metrics.get(metric,    float("nan"))
+        if metric.startswith("normalized_"):
+            print(f"  {metric:.<22} {m:>10.4f} {r:>12.4f} {g:>10.4f}")
+        else:
+            print(f"  {metric:.<22} {m:>10.1f} {r:>12.1f} {g:>10.1f}")
     print("=" * 65)
+
+
+def _print_metrics(metrics: dict):
+    """Print a metrics dict in a grouped, readable order."""
+    order_core = ["ade_m", "fde_m", "endpoint_error_m", "normalized_ade",
+                  "path_length_ratio", "smoothness", "gt_smoothness",
+                  "frechet_m", "frechet_median_m", "n_trajectories"]
+    order_buckets = ["n_short", "ade_short_m", "normalized_ade_short",
+                     "n_medium", "ade_medium_m", "normalized_ade_medium",
+                     "n_long", "ade_long_m", "normalized_ade_long"]
+    for k in order_core:
+        if k in metrics:
+            _print_one(k, metrics[k])
+    for k in order_buckets:
+        if k in metrics:
+            _print_one(k, metrics[k])
+
+
+def _print_one(k: str, v):
+    if isinstance(v, float):
+        if k.startswith("normalized_"):
+            print(f"  {k:.<30} {v:>10.4f}")
+        else:
+            print(f"  {k:.<30} {v:>10.2f}")
+    else:
+        print(f"  {k:.<30} {v}")
 
 
 if __name__ == "__main__":

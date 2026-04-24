@@ -118,6 +118,9 @@ def evaluate_generation(pred_traj, gt_traj, compute_frechet=True):
         gt_traj[:, :, 1], gt_traj[:, :, 0],
         pred_traj[:, :, 1], pred_traj[:, :, 0])
 
+    # Per-trajectory ADE (N,)
+    per_traj_ade = point_errors.mean(axis=1)
+
     # ADE: average displacement error (mean over all points and trajectories)
     ade_m = point_errors.mean()
 
@@ -137,6 +140,14 @@ def evaluate_generation(pred_traj, gt_traj, compute_frechet=True):
     else:
         path_length_ratio = float("nan")
 
+    # Normalized ADE: per-traj ADE / GT path length (unitless ratio)
+    # Short routes with small ADE still get large ratio; long routes with large
+    # ADE still get small ratio. Mean over valid trajectories.
+    if valid.any():
+        normalized_ade = float(np.mean(per_traj_ade[valid] / gt_lengths[valid]))
+    else:
+        normalized_ade = float("nan")
+
     # Smoothness: mean squared acceleration in degree space
     pred_deltas = np.diff(pred_traj, axis=1)         # (N, T-1, 2)
     pred_accel = np.diff(pred_deltas, axis=1)         # (N, T-2, 2)
@@ -150,11 +161,35 @@ def evaluate_generation(pred_traj, gt_traj, compute_frechet=True):
         "ade_m": float(ade_m),
         "fde_m": float(fde_m),
         "endpoint_error_m": float(endpoint_error_m),
+        "normalized_ade": normalized_ade,
         "path_length_ratio": float(path_length_ratio),
         "smoothness": float(smoothness),
         "gt_smoothness": float(gt_smoothness),
         "n_trajectories": N,
     }
+
+    # Length-bucketed ADE: short <50km, medium 50–500km, long >500km.
+    # A 10 km error on a 20 km route and on a 2000 km route shouldn't be pooled.
+    gt_km = gt_lengths / 1000.0
+    buckets = [
+        ("short",  gt_km < 50.0),
+        ("medium", (gt_km >= 50.0) & (gt_km < 500.0)),
+        ("long",   gt_km >= 500.0),
+    ]
+    for name, mask in buckets:
+        n_b = int(mask.sum())
+        result[f"n_{name}"] = n_b
+        if n_b > 0:
+            result[f"ade_{name}_m"] = float(per_traj_ade[mask].mean())
+            bucket_valid = mask & valid
+            if bucket_valid.any():
+                result[f"normalized_ade_{name}"] = float(
+                    np.mean(per_traj_ade[bucket_valid] / gt_lengths[bucket_valid]))
+            else:
+                result[f"normalized_ade_{name}"] = float("nan")
+        else:
+            result[f"ade_{name}_m"] = float("nan")
+            result[f"normalized_ade_{name}"] = float("nan")
 
     # Frechet distance (expensive — subsample if needed)
     if compute_frechet:

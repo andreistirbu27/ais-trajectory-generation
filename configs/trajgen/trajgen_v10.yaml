@@ -1,0 +1,70 @@
+# Trajectory Generation v10 — per-timestep retrieval + land-aware loss
+#
+# Built to fix v9's mean-pool collapse: v9 compresses each (128, 2) retrieved
+# route into one d_model vector before the decoder sees it, so per-timestep
+# shape is lost. Result: at epoch 17 v9 ADE 7980 m, already 45% behind
+# zero-training retrieval-top-1 (5489 m).
+#
+# v10 changes vs v9:
+#   1. Per-timestep retrieval: each route → 32 tokens (NOT mean-pooled).
+#      Decoder can cross-attend to "neighbor k at step t" directly.
+#   2. Land-aware loss: L_land = mean(ReLU(sdf_km - 10)^2) on predicted
+#      trajectory in raw degrees. Threshold=10km discounts coastal raster
+#      noise; GT sits at 10.8% on-land at this threshold (natural floor).
+#   3. Windowed causal mask (k_past=32) for local-momentum decoding.
+#      Reduces drift from long-range attention to stale history.
+#
+# Encoder memory tokens: 3 base + K * t_retr = 3 + 5*32 = 163 tokens.
+# Decoder: 4 layers × d_model=256, same as v5/v9.
+#
+# Usage:
+#   python3 scripts/train/train_gen_v10.py \
+#       --config configs/trajgen/trajgen_v10.yaml
+
+data_npz: data/processed/trajgen_128.npz
+out_dir: runs/trajgen_v10
+
+# Dataset
+val_frac: 0.15
+seed: 42
+
+# Retrieval
+k_retrieval: 5
+retrieval_vtype_weight: 0.5
+exclude_self: true
+knn_cache: data/processed/trajgen_128_knn_k5.npz
+t_retr: 32                  # points per retrieved route (per-step tokens)
+
+# Model
+d_model: 256
+nhead: 8
+num_encoder_layers: 2
+num_decoder_layers: 4
+dim_feedforward: 1024
+dropout: 0.1
+k_past: 32                  # windowed causal mask; null/None = full causal
+
+# Training
+batch_size: 64
+epochs: 60
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+
+# Loss weights
+lambda_end: 10.0
+lambda_smooth: 1.0
+# L_land is in km^2 (mean penetration^2). At random-init output it can be
+# 100-300; at convergence it should be ~0. lambda_land=0.01 keeps the land
+# gradient comparable to the delta signal (~0.1) without overwhelming
+# reconstruction during warmup. Raise to 0.05-0.1 if land crossings persist.
+lambda_land: 0.01
+
+# Land mask
+land_sdf: data/processed/land_sdf_050deg.npz
+land_threshold_km: 10.0     # SDF > 10 km penalised; lower = harsher
+
+# Logging
+val_eval_batches: 30
+log_every: 100

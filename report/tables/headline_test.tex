@@ -1,0 +1,14 @@
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Method} & \textbf{\ade} (m) & \textbf{\fde} (m) & land\,\% & cross\,\% \\
+\midrule
+\textbf{v10 + router (production, $\lambda_{\mathrm{land}} = 0.05$)} & $\mathbf{7637}$ & $488$ & $\mathbf{0.00}$ & $\mathbf{0.00}$ \\
+v10 + router ($\lambda_{\mathrm{land}} = 0.01$)            & $7764$ & $488$ & $0.00$ & $0.04$ \\
+v10 + router (no $L_{\mathrm{land}}$)                       & $8417$ & $488$ & $0.00$ & $0.04$ \\
+v9 + router (mean-pool retrieval, clean retrain)
+                                                            &  $9612$ & $488$ & $0.00$ & $0.13$ \\
+v5 + router (scheduled sampling, clean retrain)
+                                                            & $10562$ & $488$ & $0.00$ & $0.17$ \\
+v4 + router (no SS, clean retrain)                         & $10126$ & $488$ & $0.00$ & $0.09$ \\
+\bottomrule
+\end{tabular}

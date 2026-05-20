@@ -1,0 +1,89 @@
+\contentsline {section}{\numberline {1}Introduction}{5}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Context and motivation}{5}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Goal of the project}{5}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}Why this is hard}{5}{subsection.1.3}%
+\contentsline {paragraph}{An irregular constraint surface.}{5}{section*.2}%
+\contentsline {paragraph}{Multimodal route distribution.}{5}{section*.3}%
+\contentsline {paragraph}{Two orders of magnitude in voyage length.}{6}{section*.4}%
+\contentsline {paragraph}{Noisy ground truth.}{6}{section*.5}%
+\contentsline {subsection}{\numberline {1.4}What was personally implemented}{6}{subsection.1.4}%
+\contentsline {subsection}{\numberline {1.5}Headline result}{6}{subsection.1.5}%
+\contentsline {subsection}{\numberline {1.6}Outline}{7}{subsection.1.6}%
+\contentsline {section}{\numberline {2}Background}{7}{section.2}%
+\contentsline {subsection}{\numberline {2.1}The AIS data source}{7}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Trajectory modelling with Transformers}{8}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Retrieval-augmented generation}{8}{subsection.2.3}%
+\contentsline {subsection}{\numberline {2.4}Related work}{8}{subsection.2.4}%
+\contentsline {subsection}{\numberline {2.5}Signed distance functions for land geometry}{9}{subsection.2.5}%
+\contentsline {section}{\numberline {3}Research challenge}{9}{section.3}%
+\contentsline {section}{\numberline {4}Methodology}{9}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Data preparation}{10}{subsection.4.1}%
+\contentsline {paragraph}{1.\nobreakspace {}Quality filter.}{10}{section*.11}%
+\contentsline {paragraph}{2.\nobreakspace {}Resampling.}{11}{section*.12}%
+\contentsline {paragraph}{3.\nobreakspace {}Land filter (E1).}{11}{section*.13}%
+\contentsline {paragraph}{4.\nobreakspace {}Train/val/test split.}{11}{section*.16}%
+\contentsline {paragraph}{5.\nobreakspace {}Auxiliary artefacts.}{11}{section*.17}%
+\contentsline {subsection}{\numberline {4.2}Model architecture}{12}{subsection.4.2}%
+\contentsline {paragraph}{Encoder.}{12}{section*.18}%
+\contentsline {paragraph}{Decoder.}{13}{section*.19}%
+\contentsline {paragraph}{Windowed causal mask.}{13}{section*.20}%
+\contentsline {paragraph}{Parameter count.}{13}{section*.21}%
+\contentsline {subsection}{\numberline {4.3}Hyperparameters and training details}{13}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}Training objective}{14}{subsection.4.4}%
+\contentsline {subsection}{\numberline {4.5}Inference and post-processing}{15}{subsection.4.5}%
+\contentsline {paragraph}{Hard land projection (line 7).}{15}{section*.23}%
+\contentsline {paragraph}{Linear endpoint correction (lines 11-13).}{16}{section*.24}%
+\contentsline {paragraph}{Water-graph snap-only (lines 15-17).}{16}{section*.25}%
+\contentsline {section}{\numberline {5}Technical contributions}{16}{section.5}%
+\contentsline {subsection}{\numberline {5.1}The data-quality step}{16}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Per-step retrieval bank}{16}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Land-aware loss}{16}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}WaterRouter snap-only post-processor}{17}{subsection.5.4}%
+\contentsline {subsection}{\numberline {5.5}Implementation notes}{17}{subsection.5.5}%
+\contentsline {paragraph}{MMSI-grouped train/val split.}{17}{section*.26}%
+\contentsline {paragraph}{Cached retrieval index.}{17}{section*.27}%
+\contentsline {paragraph}{Checkpoint resumption.}{17}{section*.28}%
+\contentsline {paragraph}{Hard projection vs water-graph snap.}{18}{section*.29}%
+\contentsline {subsection}{\numberline {5.6}Evaluation tooling}{18}{subsection.5.6}%
+\contentsline {section}{\numberline {6}Experiments and results}{18}{section.6}%
+\contentsline {paragraph}{Evaluation protocol.}{18}{section*.30}%
+\contentsline {paragraph}{Variants in the unified comparison.}{18}{section*.31}%
+\contentsline {subsection}{\numberline {6.1}Main results}{19}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Length-bucketed analysis}{19}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}Subsample-seed variance}{20}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}Training-seed variance}{21}{subsection.6.4}%
+\contentsline {subsection}{\numberline {6.5}Validation-to-test optimism gap}{21}{subsection.6.5}%
+\contentsline {paragraph}{Length-distribution test of the gap hypothesis.}{22}{section*.37}%
+\contentsline {paragraph}{Statistical significance of the headline ranking.}{22}{section*.39}%
+\contentsline {subsection}{\numberline {6.6}Training dynamics}{22}{subsection.6.6}%
+\contentsline {subsection}{\numberline {6.7}A* shortest-water-path baseline}{23}{subsection.6.7}%
+\contentsline {subsection}{\numberline {6.8}Per-vessel-type breakdown}{24}{subsection.6.8}%
+\contentsline {subsection}{\numberline {6.9}Land-validity diagnostics}{24}{subsection.6.9}%
+\contentsline {subsection}{\numberline {6.10}Qualitative examples}{25}{subsection.6.10}%
+\contentsline {subsection}{\numberline {6.11}Motivating ablations}{26}{subsection.6.11}%
+\contentsline {subsection}{\numberline {6.12}Hyperparameter sensitivity}{26}{subsection.6.12}%
+\contentsline {subsection}{\numberline {6.13}Architecture-controlled ladder on the clean corpus}{28}{subsection.6.13}%
+\contentsline {subsection}{\numberline {6.14}Use-case ranking}{29}{subsection.6.14}%
+\contentsline {section}{\numberline {7}Design rationale and lessons}{30}{section.7}%
+\contentsline {subsection}{\numberline {7.1}Per-step validation loss does not predict rollout \textsc {ade}}{30}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}Retrieval was the largest single architectural lever}{31}{subsection.7.2}%
+\contentsline {paragraph}{Retrieval-quality vs error.}{31}{section*.54}%
+\contentsline {subsection}{\numberline {7.3}Data quality was the largest single intervention measured here}{32}{subsection.7.3}%
+\contentsline {section}{\numberline {8}Summary, conclusion and outlook}{32}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Summary}{32}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}Experimental design}{32}{subsection.8.2}%
+\contentsline {subsection}{\numberline {8.3}Limitations}{33}{subsection.8.3}%
+\contentsline {subsection}{\numberline {8.4}Future work}{33}{subsection.8.4}%
+\contentsline {subsection}{\numberline {8.5}Closing remark}{34}{subsection.8.5}%
+\contentsline {section}{\numberline {A}Training pseudocode}{34}{appendix.A}%
+\contentsline {section}{\numberline {B}Complete results tables}{35}{appendix.B}%
+\contentsline {subsection}{\numberline {B.1}v1 -- next-step displacement prediction}{35}{subsection.B.1}%
+\contentsline {subsection}{\numberline {B.2}v2 onward -- unified cleaned-corpus ladder}{35}{subsection.B.2}%
+\contentsline {section}{\numberline {C}Abandoned and historical variants}{36}{appendix.C}%
+\contentsline {paragraph}{MVP, v2, v3 -- checkpoint reload failure.}{36}{section*.58}%
+\contentsline {paragraph}{v6 / v7 -- obstacle conditioning (parked).}{36}{section*.59}%
+\contentsline {paragraph}{v11 -- Halton-cone pointer (parked).}{36}{section*.60}%
+\contentsline {paragraph}{v12 -- water-cell K-ring pointer (abandoned).}{36}{section*.61}%
+\contentsline {section}{\numberline {D}Repository availability}{36}{appendix.D}%
+\contentsline {paragraph}{Reproducing the headline numbers.}{36}{section*.62}%
+\contentsline {section}{\numberline {E}Audit summary}{37}{appendix.E}%

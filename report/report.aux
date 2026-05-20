@@ -1,0 +1,181 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyperFirstAtBeginDocument{\AtBeginDocument}
+\HyperFirstAtBeginDocument{\ifx\hyper@anchor\@undefined
+\global\let\oldcontentsline\contentsline
+\gdef\contentsline#1#2#3#4{\oldcontentsline{#1}{#2}{#3}}
+\global\let\oldnewlabel\newlabel
+\gdef\newlabel#1#2{\newlabelxx{#1}#2}
+\gdef\newlabelxx#1#2#3#4#5#6{\oldnewlabel{#1}{{#2}{#3}}}
+\AtEndDocument{\ifx\hyper@anchor\@undefined
+\let\contentsline\oldcontentsline
+\let\newlabel\oldnewlabel
+\fi}
+\fi}
+\global\let\hyper@last\relax 
+\gdef\HyperFirstAtBeginDocument#1{#1}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{noaa2024ais}
+\citation{grigoropoulos2024scalable}
+\citation{li2023trajectory}
+\citation{wessel1996gshhs}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction and Context}{4}{section.1}\protected@file@percent }
+\newlabel{sec:intro}{{1}{4}{Introduction and Context}{section.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Maritime trajectory modelling}{4}{subsection.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}Problem statement}{4}{subsection.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.3}Why this is hard}{4}{subsection.1.3}\protected@file@percent }
+\citation{vaswani2017attention}
+\citation{bengio2015scheduled}
+\citation{ho2020denoising}
+\citation{song2021ddim}
+\citation{ho2022classifier}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.4}Contribution overview}{5}{subsection.1.4}\protected@file@percent }
+\newlabel{sec:contribution-overview}{{1.4}{5}{Contribution overview}{subsection.1.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background}{5}{section.2}\protected@file@percent }
+\newlabel{sec:background}{{2}{5}{Background}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Transformer encoder and encoder-decoder}{5}{subsection.2.1}\protected@file@percent }
+\newlabel{sec:bg-transformer}{{2.1}{5}{Transformer encoder and encoder-decoder}{subsection.2.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Autoregressive generation and exposure bias}{5}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Denoising diffusion models}{5}{subsection.2.3}\protected@file@percent }
+\newlabel{sec:bg-diffusion}{{2.3}{5}{Denoising diffusion models}{subsection.2.3}{}}
+\citation{peebles2023dit}
+\citation{wessel1996gshhs}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Signed-distance fields}{6}{subsection.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Dataset and Experimental Setup}{6}{section.3}\protected@file@percent }
+\newlabel{sec:setup}{{3}{6}{Dataset and Experimental Setup}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Data source and filtering}{6}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Evaluation protocol}{6}{subsection.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Hardware and software}{7}{subsection.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Baselines}{7}{subsection.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Technical Contributions}{7}{section.4}\protected@file@percent }
+\newlabel{sec:contributions}{{4}{7}{Technical Contributions}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}v1 -- Next-step displacement prediction}{7}{subsection.4.1}\protected@file@percent }
+\newlabel{sec:v1}{{4.1}{7}{v1 -- Next-step displacement prediction}{subsection.4.1}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.1.1}Architecture}{7}{subsubsection.4.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.1.2}Result}{7}{subsubsection.4.1.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces v1 next-step model vs.\ constant-velocity (CV) baseline. ADE in metres; lower is better.\relax }}{7}{table.caption.2}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{tab:v1}{{1}{7}{v1 next-step model vs.\ constant-velocity (CV) baseline. ADE in metres; lower is better.\relax }{table.caption.2}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.1.3}Lesson}{8}{subsubsection.4.1.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}v2--v5 -- Encoder-decoder trajectory generator}{8}{subsection.4.2}\protected@file@percent }
+\newlabel{sec:v2v5}{{4.2}{8}{v2--v5 -- Encoder-decoder trajectory generator}{subsection.4.2}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.1}Reframing as seq2seq}{8}{subsubsection.4.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.2}Architecture (\texttt  {src/model\_gen.py})}{8}{subsubsection.4.2.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces v4/v5 encoder-decoder architecture. The encoder produces 3 context tokens from start, end, and vessel-type conditioning. The decoder generates the 128-point route autoregressively via causal self-attention and cross-attention to the encoder memory. Input features include bearing-to-destination $(\qopname  \relax o{sin}\theta , \qopname  \relax o{cos}\theta )$ added in v4.\relax }}{8}{figure.caption.3}\protected@file@percent }
+\newlabel{fig:v4-arch}{{1}{8}{v4/v5 encoder-decoder architecture. The encoder produces 3 context tokens from start, end, and vessel-type conditioning. The decoder generates the 128-point route autoregressively via causal self-attention and cross-attention to the encoder memory. Input features include bearing-to-destination $(\sin \theta , \cos \theta )$ added in v4.\relax }{figure.caption.3}{}}
+\newlabel{eq:gen-loss}{{1}{8}{Architecture (\texttt {src/model\_gen.py})}{equation.4.1}{}}
+\citation{bengio2015scheduled}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.3}Linear endpoint correction}{9}{subsubsection.4.2.3}\protected@file@percent }
+\newlabel{sec:endpoint-correction}{{4.2.3}{9}{Linear endpoint correction}{subsubsection.4.2.3}{}}
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces Linear Endpoint Correction\relax }}{9}{algorithm.1}\protected@file@percent }
+\newlabel{alg:endpoint}{{1}{9}{Linear Endpoint Correction\relax }{algorithm.1}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.4}Scheduled sampling (v3, v5)}{9}{subsubsection.4.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.5}Architectural ladder results}{9}{subsubsection.4.2.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces v2--v5 architectural ladder. val\_delta is per-step loss in normalised delta space; ADE is evaluated by autoregressive rollout over 500 validation routes (seed=42). The architectural ladder produced no real-world ADE improvement.\relax }}{9}{table.caption.4}\protected@file@percent }
+\newlabel{tab:v2v5}{{2}{9}{v2--v5 architectural ladder. val\_delta is per-step loss in normalised delta space; ADE is evaluated by autoregressive rollout over 500 validation routes (seed=42). The architectural ladder produced no real-world ADE improvement.\relax }{table.caption.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}v6, v7, v8 -- Obstacle-conditioned generation (parked)}{9}{subsection.4.3}\protected@file@percent }
+\newlabel{sec:v6v7}{{4.3}{9}{v6, v7, v8 -- Obstacle-conditioned generation (parked)}{subsection.4.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces ADE across model iterations. Blue bars: ADE-only models on \texttt  {trajgen\_128.npz} (dirty data). Green bars: water-strict variants. Dashed red line: great-circle baseline. Note the logarithmic scale on the right portion of the x-axis for v12.\relax }}{10}{figure.caption.5}\protected@file@percent }
+\newlabel{fig:ade-by-model}{{2}{10}{ADE across model iterations. Blue bars: ADE-only models on \texttt {trajgen\_128.npz} (dirty data). Green bars: water-strict variants. Dashed red line: great-circle baseline. Note the logarithmic scale on the right portion of the x-axis for v12.\relax }{figure.caption.5}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.3.1}Motivation and architecture}{10}{subsubsection.4.3.1}\protected@file@percent }
+\newlabel{eq:obstacle-loss}{{2}{10}{Motivation and architecture}{equation.4.2}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.3.2}v6 --- the data leak}{10}{subsubsection.4.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.3.3}v7 --- the structural failure}{10}{subsubsection.4.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}v9 -- Retrieval-augmented generation}{11}{subsection.4.4}\protected@file@percent }
+\newlabel{sec:v9}{{4.4}{11}{v9 -- Retrieval-augmented generation}{subsection.4.4}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.1}Retrieval-top-1 gate}{11}{subsubsection.4.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.2}Architecture (\texttt  {src/model\_gen\_retrieval.py})}{11}{subsubsection.4.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.3}Results}{11}{subsubsection.4.4.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces v9 results (epoch\nobreakspace  {}38/60, \texttt  {trajgen\_128.npz}, $n=500$, seed=42).\relax }}{11}{table.caption.6}\protected@file@percent }
+\newlabel{tab:v9}{{3}{11}{v9 results (epoch~38/60, \texttt {trajgen\_128.npz}, $n=500$, seed=42).\relax }{table.caption.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Length-bucketed \textsc  {ade}{} for v9 (dirty data, $n=500$, seed=42). v9 wins short and medium routes; retrieval-top-1 dominates long routes due to mean-pool collapse.\relax }}{11}{table.caption.7}\protected@file@percent }
+\newlabel{tab:v9-buckets}{{4}{11}{Length-bucketed \ade {} for v9 (dirty data, $n=500$, seed=42). v9 wins short and medium routes; retrieval-top-1 dominates long routes due to mean-pool collapse.\relax }{table.caption.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}v10 -- Per-timestep retrieval and land-aware training}{11}{subsection.4.5}\protected@file@percent }
+\newlabel{sec:v10}{{4.5}{11}{v10 -- Per-timestep retrieval and land-aware training}{subsection.4.5}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.1}Change 1: Per-step retrieval bank}{11}{subsubsection.4.5.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces v10 encoder-decoder. The 163-token memory bank exposes per-step shape from each of the 5 retrieved routes, replacing v9's mean-pool collapse. The windowed causal mask (k\_past\,=\,32) limits self-attention drift over the 128-step rollout.\relax }}{12}{figure.caption.8}\protected@file@percent }
+\newlabel{fig:v10-arch}{{3}{12}{v10 encoder-decoder. The 163-token memory bank exposes per-step shape from each of the 5 retrieved routes, replacing v9's mean-pool collapse. The windowed causal mask (k\_past\,=\,32) limits self-attention drift over the 128-step rollout.\relax }{figure.caption.8}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.2}Change 2: Windowed causal mask}{12}{subsubsection.4.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.3}Change 3: Land-aware loss and hard-projection inference}{12}{subsubsection.4.5.3}\protected@file@percent }
+\newlabel{sec:land-sdf}{{4.5.3}{12}{Change 3: Land-aware loss and hard-projection inference}{subsubsection.4.5.3}{}}
+\newlabel{eq:land-loss}{{3}{12}{Change 3: Land-aware loss and hard-projection inference}{equation.4.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Land SDF raster at $0.05^\circ $ ($\approx 5\,km$) resolution over the US coverage bbox. Blue = water (negative SDF), red = land (positive SDF). Saturated at $\pm 100\,km$ for visual clarity.\relax }}{13}{figure.caption.9}\protected@file@percent }
+\newlabel{fig:land-sdf}{{4}{13}{Land SDF raster at $0.05^\circ $ ($\approx 5\,km$) resolution over the US coverage bbox. Blue = water (negative SDF), red = land (positive SDF). Saturated at $\pm 100\,km$ for visual clarity.\relax }{figure.caption.9}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces v10 variants on dirty \texttt  {trajgen\_128.npz} ($n=500$, seed=42).\relax }}{13}{table.caption.10}\protected@file@percent }
+\newlabel{tab:v10-dirty}{{5}{13}{v10 variants on dirty \texttt {trajgen\_128.npz} ($n=500$, seed=42).\relax }{table.caption.10}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.4}Results on dirty data}{13}{subsubsection.4.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}WaterRouter post-processor}{13}{subsection.4.6}\protected@file@percent }
+\newlabel{sec:water-router}{{4.6}{13}{WaterRouter post-processor}{subsection.4.6}{}}
+\citation{halton1960quasi}
+\@writefile{loa}{\contentsline {algorithm}{\numberline {2}{\ignorespaces WaterRouter Snap-Only\relax }}{14}{algorithm.2}\protected@file@percent }
+\newlabel{alg:snap}{{2}{14}{WaterRouter Snap-Only\relax }{algorithm.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.7}E1 -- Upstream data cleaning}{14}{subsection.4.7}\protected@file@percent }
+\newlabel{sec:e1}{{4.7}{14}{E1 -- Upstream data cleaning}{subsection.4.7}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.7.1}Diagnosis}{14}{subsubsection.4.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.7.2}The filter}{14}{subsubsection.4.7.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.7.3}Impact}{14}{subsubsection.4.7.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces v10 ep52 weights re-evaluated on clean vs.\ dirty data.\relax }}{14}{table.caption.11}\protected@file@percent }
+\newlabel{tab:e1}{{6}{14}{v10 ep52 weights re-evaluated on clean vs.\ dirty data.\relax }{table.caption.11}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.8}v11 -- Halton-cone pointer (parked)}{15}{subsection.4.8}\protected@file@percent }
+\newlabel{sec:v11}{{4.8}{15}{v11 -- Halton-cone pointer (parked)}{subsection.4.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.9}v12 -- Water-cell K-ring pointer (abandoned)}{15}{subsection.4.9}\protected@file@percent }
+\newlabel{sec:v12}{{4.9}{15}{v12 -- Water-cell K-ring pointer (abandoned)}{subsection.4.9}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces v12 failure (40-epoch run, $K=4$, $n=500$, seed=42).\relax }}{15}{table.caption.12}\protected@file@percent }
+\newlabel{tab:v12}{{7}{15}{v12 failure (40-epoch run, $K=4$, $n=500$, seed=42).\relax }{table.caption.12}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Results and Discussion}{15}{section.5}\protected@file@percent }
+\newlabel{sec:results}{{5}{15}{Results and Discussion}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Summary of all trajectory-generation experiments}{15}{subsection.5.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Training and validation loss for v9 (retrieval), v10 (production), and v12 (abandoned) on log scale. Note that v12's CE loss is on a fundamentally different scale and not comparable to v9/v10's regression loss.\relax }}{16}{figure.caption.13}\protected@file@percent }
+\newlabel{fig:training-curves}{{5}{16}{Training and validation loss for v9 (retrieval), v10 (production), and v12 (abandoned) on log scale. Note that v12's CE loss is on a fundamentally different scale and not comparable to v9/v10's regression loss.\relax }{figure.caption.13}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Cross-cutting findings}{16}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Production system use-case ranking}{16}{subsection.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Summary and Conclusion}{16}{section.6}\protected@file@percent }
+\newlabel{sec:conclusion}{{6}{16}{Summary and Conclusion}{section.6}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces FDE across model versions. Models with linear endpoint correction (blue) land near \textsc  {fde}{}$=0$. Retrieval-top-1 (yellow) has high \textsc  {fde}{} because no correction is applied to returned historical routes. v10\,+\,WaterRouter FDE is non-zero because snapping can shift the final waypoint.\relax }}{17}{figure.caption.14}\protected@file@percent }
+\newlabel{fig:fde-by-model}{{6}{17}{FDE across model versions. Models with linear endpoint correction (blue) land near \fde {}$=0$. Retrieval-top-1 (yellow) has high \fde {} because no correction is applied to returned historical routes. v10\,+\,WaterRouter FDE is non-zero because snapping can shift the final waypoint.\relax }{figure.caption.14}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Use-case ranking for the production system.\relax }}{17}{table.caption.16}\protected@file@percent }
+\newlabel{tab:ranking}{{8}{17}{Use-case ranking for the production system.\relax }{table.caption.16}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}What was achieved}{17}{subsection.6.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Open challenges}{17}{subsection.6.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Length-bucketed ADE (log scale). v9 wins short and medium; retrieval-top-1 dominates the long-tail ($>$500\,km). No single model wins all three buckets --- the key motivation for v13's length router.\relax }}{18}{figure.caption.15}\protected@file@percent }
+\newlabel{fig:length-bucketed}{{7}{18}{Length-bucketed ADE (log scale). v9 wins short and medium; retrieval-top-1 dominates the long-tail ($>$500\,km). No single model wins all three buckets --- the key motivation for v13's length router.\relax }{figure.caption.15}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}The project's deepest lesson}{18}{subsection.6.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}Outlook: Proposed v13 -- TrajDiff}{18}{section.7}\protected@file@percent }
+\newlabel{sec:future}{{7}{18}{Outlook: Proposed v13 -- TrajDiff}{section.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Motivation}{18}{subsection.7.1}\protected@file@percent }
+\citation{peebles2023dit}
+\bibstyle{plain}
+\bibdata{references}
+\bibcite{bengio2015scheduled}{{1}{}{{}}{{}}}
+\bibcite{grigoropoulos2024scalable}{{2}{}{{}}{{}}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Architecture overview}{19}{subsection.7.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Length router (v13a)}{19}{subsection.7.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}Pre-flight checklist}{19}{subsection.7.4}\protected@file@percent }
+\bibcite{halton1960quasi}{{3}{}{{}}{{}}}
+\bibcite{ho2020denoising}{{4}{}{{}}{{}}}
+\bibcite{ho2022classifier}{{5}{}{{}}{{}}}
+\bibcite{li2023trajectory}{{6}{}{{}}{{}}}
+\bibcite{noaa2024ais}{{7}{}{{}}{{}}}
+\bibcite{peebles2023dit}{{8}{}{{}}{{}}}
+\bibcite{song2021ddim}{{9}{}{{}}{{}}}
+\bibcite{vaswani2017attention}{{10}{}{{}}{{}}}
+\bibcite{wessel1996gshhs}{{11}{}{{}}{{}}}
+\@writefile{toc}{\contentsline {section}{\numberline {A}Reproducibility Notes}{20}{appendix.A}\protected@file@percent }
+\newlabel{app:repro}{{A}{20}{Reproducibility Notes}{appendix.A}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {B}Repository Structure}{21}{appendix.B}\protected@file@percent }
+\newlabel{app:structure}{{B}{21}{Repository Structure}{appendix.B}{}}
+\providecommand\NAT@force@numbers{}\NAT@force@numbers
+\@writefile{toc}{\contentsline {section}{\numberline {C}Missing or Incomplete Visual Evidence}{22}{appendix.C}\protected@file@percent }
+\newlabel{app:missing}{{C}{22}{Missing or Incomplete Visual Evidence}{appendix.C}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {C.1}Multi-seed variance plot}{22}{subsection.C.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {C.2}v13 TrajDiff sample diversity plot}{22}{subsection.C.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Placeholder: TrajDiff sample diversity plot (v13 not yet implemented).\relax }}{22}{figure.caption.18}\protected@file@percent }
+\newlabel{fig:v13-samples}{{8}{22}{Placeholder: TrajDiff sample diversity plot (v13 not yet implemented).\relax }{figure.caption.18}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {C.3}v13 length router evaluation}{22}{subsection.C.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {C.4}Architecture diagrams for v9, v12, v13}{22}{subsection.C.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Placeholder: v9 mean-pool retrieval architecture.\relax }}{23}{figure.caption.19}\protected@file@percent }
+\newlabel{fig:v9-arch-placeholder}{{9}{23}{Placeholder: v9 mean-pool retrieval architecture.\relax }{figure.caption.19}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces Placeholder: TrajDiff (v13) architecture.\relax }}{23}{figure.caption.20}\protected@file@percent }
+\newlabel{fig:v13-arch-placeholder}{{10}{23}{Placeholder: TrajDiff (v13) architecture.\relax }{figure.caption.20}{}}
+\gdef \@abspage@last{23}

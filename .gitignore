@@ -24,6 +24,7 @@ anaconda_projects/
 data/*
 outputs/*
 runs/*
+logs/*
 
 # Checkpoints
 *.pt

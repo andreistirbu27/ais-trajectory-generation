@@ -1,0 +1,11 @@
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Method} & \ade~(m) & \fde~(m) & cross\%@10\,km \\
+\midrule
+\textbf{v10 + router (production, $\lambda_{\mathrm{land}} = 0.05$, clean-trained seed42)} & $\mathbf{5930 \pm 372}$ & $608 \pm 29$ & $0.04 \pm 0.09$ \\
+v10 raw (no router; same checkpoint)                      & $5913 \pm 384$ & $0 \pm 0$ & $1.88 \pm 0.69$ \\
+Great-circle + snap (stronger water-strict baseline)      & $8484 \pm 597$ & $581 \pm 17$ & $0.20 \pm 0.13$ \\
+Great-circle baseline                                     & $8735 \pm 651$ & $0 \pm 0$ & $8.80 \pm 0.68$ \\
+Retrieval top-1 (zero training)                           & $11667 \pm 636$ & $11832 \pm 468$ & $0.00 \pm 0.00$ \\
+\bottomrule
+\end{tabular}

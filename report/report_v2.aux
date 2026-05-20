@@ -1,0 +1,235 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyperFirstAtBeginDocument{\AtBeginDocument}
+\HyperFirstAtBeginDocument{\ifx\hyper@anchor\@undefined
+\global\let\oldcontentsline\contentsline
+\gdef\contentsline#1#2#3#4{\oldcontentsline{#1}{#2}{#3}}
+\global\let\oldnewlabel\newlabel
+\gdef\newlabel#1#2{\newlabelxx{#1}#2}
+\gdef\newlabelxx#1#2#3#4#5#6{\oldnewlabel{#1}{{#2}{#3}}}
+\AtEndDocument{\ifx\hyper@anchor\@undefined
+\let\contentsline\oldcontentsline
+\let\newlabel\oldnewlabel
+\fi}
+\fi}
+\global\let\hyper@last\relax 
+\gdef\HyperFirstAtBeginDocument#1{#1}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{5}{section.1}\protected@file@percent }
+\newlabel{sec:intro}{{1}{5}{Introduction}{section.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Context and motivation}{5}{subsection.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}Goal of the project}{5}{subsection.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.3}Why this is hard}{5}{subsection.1.3}\protected@file@percent }
+\newlabel{sec:hard}{{1.3}{5}{Why this is hard}{subsection.1.3}{}}
+\@writefile{toc}{\contentsline {paragraph}{An irregular constraint surface.}{5}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Multimodal route distribution.}{5}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Two orders of magnitude in voyage length.}{6}{section*.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Noisy ground truth.}{6}{section*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.4}What was personally implemented}{6}{subsection.1.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.5}Headline result}{6}{subsection.1.5}\protected@file@percent }
+\citation{vaswani2017attention}
+\citation{nguyen2020transformer}
+\citation{capobianco2021lstm}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces System overview. An encoder produces $163$ memory tokens ($3$ conditioning + $5 \times 32$ retrieval); a windowed-causal decoder generates one displacement per step; training optimises a four-term loss including a differentiable land penalty; three inference-time passes (hard land projection, linear endpoint correction, WaterRouter snap to connected water) finish the route. All components are described in detail in Section\nobreakspace  {}\ref  {sec:methodology}.\relax }}{7}{figure.caption.6}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:arch_intro}{{1}{7}{System overview. An encoder produces $163$ memory tokens ($3$ conditioning + $5 \times 32$ retrieval); a windowed-causal decoder generates one displacement per step; training optimises a four-term loss including a differentiable land penalty; three inference-time passes (hard land projection, linear endpoint correction, WaterRouter snap to connected water) finish the route. All components are described in detail in Section~\ref {sec:methodology}.\relax }{figure.caption.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.6}Outline}{7}{subsection.1.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background}{7}{section.2}\protected@file@percent }
+\newlabel{sec:background}{{2}{7}{Background}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}The AIS data source}{7}{subsection.2.1}\protected@file@percent }
+\citation{khandelwal2020nearest}
+\citation{lewis2020retrieval}
+\citation{borgeaud2022retro}
+\citation{nguyen2020transformer}
+\citation{capobianco2021lstm}
+\citation{liang2022generative}
+\citation{wang2019tggan}
+\citation{salzmann2020trajectronpp}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Headline performance on the cleaned \emph  {validation} set (5-seed mean $\pm $ std on disjoint 500-route subsamples). Lower is better for \textsc  {ade}{} and cross\%; \textsc  {fde}{} is uninformative for endpoint-correct methods.\relax }}{8}{table.caption.7}\protected@file@percent }
+\newlabel{tab:headline}{{1}{8}{Headline performance on the cleaned \emph {validation} set (5-seed mean $\pm $ std on disjoint 500-route subsamples). Lower is better for \ade {} and cross\%; \fde {} is uninformative for endpoint-correct methods.\relax }{table.caption.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Headline performance on the fully held-out cleaned \emph  {test} set ($n = 2326$, single shot, no \textsc  {mmsi} overlap with train or val). Test ADE is consistently $\approx 30\,\%$ above val ADE across all methods (Section\nobreakspace  {}\ref  {sec:valtest}).\relax }}{8}{table.caption.8}\protected@file@percent }
+\newlabel{tab:headline_test}{{2}{8}{Headline performance on the fully held-out cleaned \emph {test} set ($n = 2326$, single shot, no \textsc {mmsi} overlap with train or val). Test ADE is consistently $\approx 30\,\%$ above val ADE across all methods (Section~\ref {sec:valtest}).\relax }{table.caption.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Trajectory modelling with Transformers}{8}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Retrieval-augmented generation}{8}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Related work}{8}{subsection.2.4}\protected@file@percent }
+\newlabel{sec:related}{{2.4}{8}{Related work}{subsection.2.4}{}}
+\citation{wessel1996gshhs}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.5}Signed distance functions for land geometry}{9}{subsection.2.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Research challenge}{9}{section.3}\protected@file@percent }
+\newlabel{sec:challenge}{{3}{9}{Research challenge}{section.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Methodology}{9}{section.4}\protected@file@percent }
+\newlabel{sec:methodology}{{4}{9}{Methodology}{section.4}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces End-to-end production pipeline. Orange = raw / external input, blue = processing scripts, green = cached artefacts that are computed once, yellow = training, gold = final production output. Note the land filter (centre column) and the side branches for the land\nobreakspace  {}\textsc  {sdf}, the water graph and the retrieval index.\relax }}{10}{figure.caption.9}\protected@file@percent }
+\newlabel{fig:pipeline}{{2}{10}{End-to-end production pipeline. Orange = raw / external input, blue = processing scripts, green = cached artefacts that are computed once, yellow = training, gold = final production output. Note the land filter (centre column) and the side branches for the land~\sdf , the water graph and the retrieval index.\relax }{figure.caption.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Data preparation}{10}{subsection.4.1}\protected@file@percent }
+\newlabel{sec:data}{{4.1}{10}{Data preparation}{subsection.4.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{1.\nobreakspace  {}Quality filter.}{10}{section*.11}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Data funnel from raw AIS to the production train/val/test partitions. Each stage is implemented by a single script under \texttt  {scripts/data/}.\relax }}{11}{table.caption.10}\protected@file@percent }
+\newlabel{tab:funnel}{{3}{11}{Data funnel from raw AIS to the production train/val/test partitions. Each stage is implemented by a single script under \texttt {scripts/data/}.\relax }{table.caption.10}{}}
+\@writefile{toc}{\contentsline {paragraph}{2.\nobreakspace  {}Resampling.}{11}{section*.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{3.\nobreakspace  {}Land filter (E1).}{11}{section*.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{4.\nobreakspace  {}Train/val/test split.}{11}{section*.16}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{5.\nobreakspace  {}Auxiliary artefacts.}{11}{section*.17}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Dataset overview. The corpus is dominated by short coastal hops (median $\approx 43$\nobreakspace  {}km) with a long tail of trans-coastal cargo voyages. The vessel-type composition of the cleaned corpus is shown in Figure\nobreakspace  {}\ref  {fig:vtype_dist}.\relax }}{12}{figure.caption.14}\protected@file@percent }
+\newlabel{fig:data_overview}{{3}{12}{Dataset overview. The corpus is dominated by short coastal hops (median $\approx 43$~km) with a long tail of trans-coastal cargo voyages. The vessel-type composition of the cleaned corpus is shown in Figure~\ref {fig:vtype_dist}.\relax }{figure.caption.14}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Model architecture}{12}{subsection.4.2}\protected@file@percent }
+\newlabel{sec:arch}{{4.2}{12}{Model architecture}{subsection.4.2}{}}
+\@writefile{toc}{\contentsline {paragraph}{Encoder.}{12}{section*.18}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Vessel-type composition of the cleaned $61$K-route corpus ($28$ distinct AIS codes). Passenger ($60$--$69$, blue) accounts for $42.7\,\%$ of routes, cargo ($70$--$79$, green) for $35.5\,\%$, and tanker ($80$--$89$, red) for $21.8\,\%$. Vessel-type code $60$ (``other passenger'') is the modal class. Per-class ADE on the production checkpoint is in Table\nobreakspace  {}\ref  {tab:vtype_ade} below.\relax }}{13}{figure.caption.15}\protected@file@percent }
+\newlabel{fig:vtype_dist}{{4}{13}{Vessel-type composition of the cleaned $61$K-route corpus ($28$ distinct AIS codes). Passenger ($60$--$69$, blue) accounts for $42.7\,\%$ of routes, cargo ($70$--$79$, green) for $35.5\,\%$, and tanker ($80$--$89$, red) for $21.8\,\%$. Vessel-type code $60$ (``other passenger'') is the modal class. Per-class ADE on the production checkpoint is in Table~\ref {tab:vtype_ade} below.\relax }{figure.caption.15}{}}
+\@writefile{toc}{\contentsline {paragraph}{Decoder.}{13}{section*.19}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Windowed causal mask.}{13}{section*.20}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Parameter count.}{13}{section*.21}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Hyperparameters and training details}{13}{subsection.4.3}\protected@file@percent }
+\newlabel{sec:hp}{{4.3}{13}{Hyperparameters and training details}{subsection.4.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Production hyper-parameters, verified against \texttt  {runs/trajgen\_v10\_clean\_train\_lambdaland05/best.pt} and \texttt  {configs/trajgen/trajgen\_v10\_clean\_train\_lambdaland05.yaml}.\relax }}{14}{table.caption.22}\protected@file@percent }
+\newlabel{tab:hp}{{4}{14}{Production hyper-parameters, verified against \texttt {runs/trajgen\_v10\_clean\_train\_lambdaland05/best.pt} and \texttt {configs/trajgen/trajgen\_v10\_clean\_train\_lambdaland05.yaml}.\relax }{table.caption.22}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Training objective}{14}{subsection.4.4}\protected@file@percent }
+\newlabel{sec:loss}{{4.4}{14}{Training objective}{subsection.4.4}{}}
+\newlabel{eq:loss}{{1}{14}{Training objective}{equation.4.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Inference and post-processing}{15}{subsection.4.5}\protected@file@percent }
+\newlabel{sec:inference}{{4.5}{15}{Inference and post-processing}{subsection.4.5}{}}
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces Inference: production routing.\relax }}{15}{algorithm.1}\protected@file@percent }
+\newlabel{alg:inference}{{1}{15}{Inference: production routing.\relax }{algorithm.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{Hard land projection (line 7).}{15}{section*.23}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Linear endpoint correction (lines 11-13).}{16}{section*.24}\protected@file@percent }
+\newlabel{sec:router}{{4.5}{16}{Water-graph snap-only (lines 15-17)}{section*.25}{}}
+\@writefile{toc}{\contentsline {paragraph}{Water-graph snap-only (lines 15-17).}{16}{section*.25}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Technical contributions}{16}{section.5}\protected@file@percent }
+\newlabel{sec:contrib}{{5}{16}{Technical contributions}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}The data-quality step}{16}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Per-step retrieval bank}{16}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Land-aware loss}{16}{subsection.5.3}\protected@file@percent }
+\newlabel{sec:landloss}{{5.3}{16}{Land-aware loss}{subsection.5.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}WaterRouter snap-only post-processor}{17}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Implementation notes}{17}{subsection.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{MMSI-grouped train/val split.}{17}{section*.26}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Cached retrieval index.}{17}{section*.27}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Checkpoint resumption.}{17}{section*.28}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Hard projection vs water-graph snap.}{18}{section*.29}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Evaluation tooling}{18}{subsection.5.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Experiments and results}{18}{section.6}\protected@file@percent }
+\newlabel{sec:experiments}{{6}{18}{Experiments and results}{section.6}{}}
+\@writefile{toc}{\contentsline {paragraph}{Evaluation protocol.}{18}{section*.30}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Variants in the unified comparison.}{18}{section*.31}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Main results}{19}{subsection.6.1}\protected@file@percent }
+\newlabel{sec:mainresults}{{6.1}{19}{Main results}{subsection.6.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Average Displacement Error across the unified-driver variants on the cleaned validation set. Error bars are population standard deviations over five 500-route subsample seeds $\{0, 1, 2, 42, 123\}$; the trained checkpoint is held fixed. Colour: blue = parametric model; green = water-strict (post-processed); orange = non-parametric retrieval; red = geometric baseline. Numbers above the bars are mean $\pm $ std.\relax }}{19}{figure.caption.32}\protected@file@percent }
+\newlabel{fig:adebar}{{5}{19}{Average Displacement Error across the unified-driver variants on the cleaned validation set. Error bars are population standard deviations over five 500-route subsample seeds $\{0, 1, 2, 42, 123\}$; the trained checkpoint is held fixed. Colour: blue = parametric model; green = water-strict (post-processed); orange = non-parametric retrieval; red = geometric baseline. Numbers above the bars are mean $\pm $ std.\relax }{figure.caption.32}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Length-bucketed analysis}{19}{subsection.6.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Length-bucketed \textsc  {ade}{} on the cleaned corpus across five subsample seeds. Error bars are population standard deviations. $y$-axis is logarithmic because the three buckets span more than an order of magnitude.\relax }}{20}{figure.caption.33}\protected@file@percent }
+\newlabel{fig:buckets}{{6}{20}{Length-bucketed \ade {} on the cleaned corpus across five subsample seeds. Error bars are population standard deviations. $y$-axis is logarithmic because the three buckets span more than an order of magnitude.\relax }{figure.caption.33}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Length-bucketed \textsc  {ade}{} on the cleaned corpus (mean $\pm $ std over 5 subsample seeds; same data as Figure\nobreakspace  {}\ref  {fig:buckets}). Source: \texttt  {results/headline\_clean\_5seed\_summary.csv}.\relax }}{20}{table.caption.34}\protected@file@percent }
+\newlabel{tab:lenbucket}{{5}{20}{Length-bucketed \ade {} on the cleaned corpus (mean $\pm $ std over 5 subsample seeds; same data as Figure~\ref {fig:buckets}). Source: \texttt {results/headline\_clean\_5seed\_summary.csv}.\relax }{table.caption.34}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Subsample-seed variance}{20}{subsection.6.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}Training-seed variance}{21}{subsection.6.4}\protected@file@percent }
+\newlabel{sec:trainseedvar}{{6.4}{21}{Training-seed variance}{subsection.6.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Training-seed variance for the cleaned-corpus v10 retrains. Val \textsc  {ade}{} is mean $\pm $ population std over $5$ subsample seeds. The \emph  {between-seed} std (over the three $\lambda _{\mathrm  {land}}=0.01$ val means) is $138$\nobreakspace  {}m, smaller than the within-checkpoint subsample std of $\approx 360$\nobreakspace  {}m on any single run -- so the headline uncertainty in Table\nobreakspace  {}\ref  {tab:headline} is dominated by subsample, not training, noise. Production headline (Table\nobreakspace  {}\ref  {tab:headline}) uses the $\lambda _{\mathrm  {land}}=0.05$ row.\relax }}{21}{table.caption.35}\protected@file@percent }
+\newlabel{tab:trainseed}{{6}{21}{Training-seed variance for the cleaned-corpus v10 retrains. Val \ade {} is mean $\pm $ population std over $5$ subsample seeds. The \emph {between-seed} std (over the three $\lambda _{\mathrm {land}}=0.01$ val means) is $138$~m, smaller than the within-checkpoint subsample std of $\approx 360$~m on any single run -- so the headline uncertainty in Table~\ref {tab:headline} is dominated by subsample, not training, noise. Production headline (Table~\ref {tab:headline}) uses the $\lambda _{\mathrm {land}}=0.05$ row.\relax }{table.caption.35}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.5}Validation-to-test optimism gap}{21}{subsection.6.5}\protected@file@percent }
+\newlabel{sec:valtest}{{6.5}{21}{Validation-to-test optimism gap}{subsection.6.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Val-to-test \textsc  {ade}{} gap for the cleaned-trained variants (both with snap-only router). Val is 5-seed mean on disjoint 500-route subsamples ($\approx 9.7$\nobreakspace  {}K val pool); test is a single shot on the full $n = 2326$ held-out partition. The $\approx 30\,\%$ gap is consistent across architectures.\relax }}{22}{table.caption.36}\protected@file@percent }
+\newlabel{tab:valtest}{{7}{22}{Val-to-test \ade {} gap for the cleaned-trained variants (both with snap-only router). Val is 5-seed mean on disjoint 500-route subsamples ($\approx 9.7$~K val pool); test is a single shot on the full $n = 2326$ held-out partition. The $\approx 30\,\%$ gap is consistent across architectures.\relax }{table.caption.36}{}}
+\newlabel{sec:lenvaltest}{{6.5}{22}{Length-distribution test of the gap hypothesis}{section*.37}{}}
+\@writefile{toc}{\contentsline {paragraph}{Length-distribution test of the gap hypothesis.}{22}{section*.37}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Statistical significance of the headline ranking.}{22}{section*.39}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.6}Training dynamics}{22}{subsection.6.6}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Arc-length distribution across the three partitions of the cleaned corpus ($80\,/\,15\,/\,5$ \textsc  {mmsi}-grouped split, \texttt  {seed = 42}). Vertical dotted lines mark the length-bucket boundaries used in §\ref  {sec:experiments}. The test partition has a visibly heavier right tail, contributing mechanically to the val$\to $test \textsc  {ade}{} gap.\relax }}{23}{figure.caption.38}\protected@file@percent }
+\newlabel{fig:len_val_test}{{7}{23}{Arc-length distribution across the three partitions of the cleaned corpus ($80\,/\,15\,/\,5$ \textsc {mmsi}-grouped split, \texttt {seed = 42}). Vertical dotted lines mark the length-bucket boundaries used in §\ref {sec:experiments}. The test partition has a visibly heavier right tail, contributing mechanically to the val$\to $test \ade {} gap.\relax }{figure.caption.38}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.7}A* shortest-water-path baseline}{23}{subsection.6.7}\protected@file@percent }
+\newlabel{sec:astar_baseline}{{6.7}{23}{A* shortest-water-path baseline}{subsection.6.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces A*-shortest-water-path baseline on the cleaned corpus. Val is a $500$-route subsample (seed $42$); test is the full held-out partition. Both numbers are well above the production v10+router lines from Tables\nobreakspace  {}\ref  {tab:headline}--\ref  {tab:headline_test}.\relax }}{23}{table.caption.43}\protected@file@percent }
+\newlabel{tab:astar}{{8}{23}{A*-shortest-water-path baseline on the cleaned corpus. Val is a $500$-route subsample (seed $42$); test is the full held-out partition. Both numbers are well above the production v10+router lines from Tables~\ref {tab:headline}--\ref {tab:headline_test}.\relax }{table.caption.43}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Paired-bootstrap $95\,\%$ confidence intervals for the difference $\Delta \!\!\textsc  {ade}{} = \mathrm  {ADE}(\text  {v10+router}) - \mathrm  {ADE}(\text  {baseline})$ on a per-route basis ($10{,}000$ resamples). Blue: CI excludes zero (statistically distinguishable); grey would mean overlap with zero. Source CSV: \texttt  {results/paired\_bootstrap\_ci.csv}.\relax }}{24}{figure.caption.40}\protected@file@percent }
+\newlabel{fig:bootstrap}{{8}{24}{Paired-bootstrap $95\,\%$ confidence intervals for the difference $\Delta \!\!\ade {} = \mathrm {ADE}(\text {v10+router}) - \mathrm {ADE}(\text {baseline})$ on a per-route basis ($10{,}000$ resamples). Blue: CI excludes zero (statistically distinguishable); grey would mean overlap with zero. Source CSV: \texttt {results/paired\_bootstrap\_ci.csv}.\relax }{figure.caption.40}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.8}Per-vessel-type breakdown}{24}{subsection.6.8}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Per-class \textsc  {ade}{} (mean $\pm $ population std and median, in metres) for the production v10+router checkpoint on val (2000-route subsample, seed=42) and the full held-out test partition. Source CSV: \texttt  {results/vessel\_type\_ade.csv}.\relax }}{24}{table.caption.44}\protected@file@percent }
+\newlabel{tab:vtype_ade}{{9}{24}{Per-class \ade {} (mean $\pm $ population std and median, in metres) for the production v10+router checkpoint on val (2000-route subsample, seed=42) and the full held-out test partition. Source CSV: \texttt {results/vessel\_type\_ade.csv}.\relax }{table.caption.44}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.9}Land-validity diagnostics}{24}{subsection.6.9}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces \textsc  {ade}{} variance across $5$ subsample seeds ($n = 500$ per seed, cleaned corpus). Black dots are individual seeds; error bars are mean $\pm $ population std. This figure reports validation-subsample noise only; training-seed variance is in Table\nobreakspace  {}\ref  {tab:trainseed}.\relax }}{25}{figure.caption.41}\protected@file@percent }
+\newlabel{fig:seedvar}{{9}{25}{\ade {} variance across $5$ subsample seeds ($n = 500$ per seed, cleaned corpus). Black dots are individual seeds; error bars are mean $\pm $ population std. This figure reports validation-subsample noise only; training-seed variance is in Table~\ref {tab:trainseed}.\relax }{figure.caption.41}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces Training and validation curves for the three retrieval-era variants. The production configuration (centre) converges to a lower validation loss than the mean-pool predecessor (left) and is far more stable than the discrete-pointer variant (right).\relax }}{25}{figure.caption.42}\protected@file@percent }
+\newlabel{fig:curves}{{10}{25}{Training and validation curves for the three retrieval-era variants. The production configuration (centre) converges to a lower validation loss than the mean-pool predecessor (left) and is far more stable than the discrete-pointer variant (right).\relax }{figure.caption.42}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.10}Qualitative examples}{25}{subsection.6.10}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {11}{\ignorespaces Per-code \textsc  {ade}{} on val (filled bars) and test (semi-transparent bars) for the $28$ distinct AIS vessel codes present in the cleaned corpus. Per-code sample sizes are shown above the bars ($n_{\mathrm  {val}}\,/\,n_{\mathrm  {test}}$); rare codes are noisy. Within each coarse class the ranking is broadly consistent across val and test.\relax }}{26}{figure.caption.45}\protected@file@percent }
+\newlabel{fig:ade_by_vtype}{{11}{26}{Per-code \ade {} on val (filled bars) and test (semi-transparent bars) for the $28$ distinct AIS vessel codes present in the cleaned corpus. Per-code sample sizes are shown above the bars ($n_{\mathrm {val}}\,/\,n_{\mathrm {test}}$); rare codes are noisy. Within each coarse class the ranking is broadly consistent across val and test.\relax }{figure.caption.45}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces Land-crossing diagnostics on the cleaned corpus. 5-seed mean $\pm $ std on disjoint 500-route subsamples.\relax }}{26}{table.caption.46}\protected@file@percent }
+\newlabel{tab:landstats}{{10}{26}{Land-crossing diagnostics on the cleaned corpus. 5-seed mean $\pm $ std on disjoint 500-route subsamples.\relax }{table.caption.46}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.11}Motivating ablations}{26}{subsection.6.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.12}Hyperparameter sensitivity}{26}{subsection.6.12}\protected@file@percent }
+\newlabel{sec:hpsens}{{6.12}{26}{Hyperparameter sensitivity}{subsection.6.12}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces Threshold sensitivity sweep on the cleaned corpus (seed=42, $n=500$). The ground-truth row at $\theta = 5$\nobreakspace  {}km ($14.8\,\%$ cross\%) shows the raster-noise floor.\relax }}{27}{table.caption.47}\protected@file@percent }
+\newlabel{tab:threshold_sens}{{11}{27}{Threshold sensitivity sweep on the cleaned corpus (seed=42, $n=500$). The ground-truth row at $\theta = 5$~km ($14.8\,\%$ cross\%) shows the raster-noise floor.\relax }{table.caption.47}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Hyperparameter sensitivity around the v10 cleaned-corpus configuration ($\lambda _{\mathrm  {end}} = 10$, $\lambda _{\mathrm  {land}} = 0.05$ selected). All other hyperparameters are held fixed (\texttt  {train\_seed = 42}, $60$ epochs, batch $128$ bf16, $\eta = 2 \times 10^{-4}$, cosine LR schedule, $5\,\%$ warmup).\relax }}{27}{table.caption.50}\protected@file@percent }
+\newlabel{tab:hpsens}{{12}{27}{Hyperparameter sensitivity around the v10 cleaned-corpus configuration ($\lambda _{\mathrm {end}} = 10$, $\lambda _{\mathrm {land}} = 0.05$ selected). All other hyperparameters are held fixed (\texttt {train\_seed = 42}, $60$ epochs, batch $128$ bf16, $\eta = 2 \times 10^{-4}$, cosine LR schedule, $5\,\%$ warmup).\relax }{table.caption.50}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {12}{\ignorespaces Qualitative examples on cleaned-corpus validation routes. Green = ground truth, red = production prediction, grey = land. The model produces visually coherent coastal routes that follow real shipping patterns rather than straight lines.\relax }}{28}{figure.caption.48}\protected@file@percent }
+\newlabel{fig:examples}{{12}{28}{Qualitative examples on cleaned-corpus validation routes. Green = ground truth, red = production prediction, grey = land. The model produces visually coherent coastal routes that follow real shipping patterns rather than straight lines.\relax }{figure.caption.48}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.13}Architecture-controlled ladder on the clean corpus}{28}{subsection.6.13}\protected@file@percent }
+\newlabel{sec:ladderclean}{{6.13}{28}{Architecture-controlled ladder on the clean corpus}{subsection.6.13}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {13}{\ignorespaces Two motivating failure modes that drove the principal design choices. Each panel is one concrete validation route.\relax }}{29}{figure.caption.49}\protected@file@percent }
+\newlabel{fig:motiv}{{13}{29}{Two motivating failure modes that drove the principal design choices. Each panel is one concrete validation route.\relax }{figure.caption.49}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces Architecture-controlled ladder, all trained from scratch on the cleaned corpus with the same 3-way split. Test column is the single-shot held-out partition ($n = 2326$). Lower is better for \textsc  {ade}{} and cross\%. Production v10 row uses $\lambda _{\mathrm  {land}} = 0.05$ (Section\nobreakspace  {}\ref  {sec:hpsens}); v4/v5/v9 use the same loss weights inherited from the historical ladder.\relax }}{29}{table.caption.51}\protected@file@percent }
+\newlabel{tab:ladder_clean}{{13}{29}{Architecture-controlled ladder, all trained from scratch on the cleaned corpus with the same 3-way split. Test column is the single-shot held-out partition ($n = 2326$). Lower is better for \ade {} and cross\%. Production v10 row uses $\lambda _{\mathrm {land}} = 0.05$ (Section~\ref {sec:hpsens}); v4/v5/v9 use the same loss weights inherited from the historical ladder.\relax }{table.caption.51}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.14}Use-case ranking}{29}{subsection.6.14}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {14}{\ignorespaces Use-case ranking on the cleaned corpus, $5$-seed val mean $\pm $ std (clean-trained v10 with the held-out $5\,\%$ test partition excluded from train). ``Water-strict'' means cross\%$@10$\,km $= 0$ is a hard operational requirement. The $17$\nobreakspace  {}m gap between v10 raw and v10+router lies well inside the subsample std band ($\pm 384$\nobreakspace  {}m) -- the two configurations are statistically indistinguishable on \textsc  {ade}.\relax }}{30}{table.caption.52}\protected@file@percent }
+\newlabel{tab:usecase}{{14}{30}{Use-case ranking on the cleaned corpus, $5$-seed val mean $\pm $ std (clean-trained v10 with the held-out $5\,\%$ test partition excluded from train). ``Water-strict'' means cross\%$@10$\,km $= 0$ is a hard operational requirement. The $17$~m gap between v10 raw and v10+router lies well inside the subsample std band ($\pm 384$~m) -- the two configurations are statistically indistinguishable on \ade .\relax }{table.caption.52}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Design rationale and lessons}{30}{section.7}\protected@file@percent }
+\newlabel{sec:lessons}{{7}{30}{Design rationale and lessons}{section.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {15}{\ignorespaces Architectural ladder of the full-route generation variants. ``Production'' = current best; ``superseded'' = working but no longer the production path; ``parked'' / ``abandoned'' = structural failure documented in the engineering notes (\texttt  {docs/decisions.md}). ``In unified Table\nobreakspace  {}\ref  {tab:full_results}'' indicates whether the variant survives the cleaned-corpus 5-seed re-evaluation.\relax }}{30}{table.caption.53}\protected@file@percent }
+\newlabel{tab:ladder}{{15}{30}{Architectural ladder of the full-route generation variants. ``Production'' = current best; ``superseded'' = working but no longer the production path; ``parked'' / ``abandoned'' = structural failure documented in the engineering notes (\texttt {docs/decisions.md}). ``In unified Table~\ref {tab:full_results}'' indicates whether the variant survives the cleaned-corpus 5-seed re-evaluation.\relax }{table.caption.53}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Per-step validation loss does not predict rollout \textsc  {ade}}{30}{subsection.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Retrieval was the largest single architectural lever}{31}{subsection.7.2}\protected@file@percent }
+\newlabel{sec:retrievallesson}{{7.2}{31}{Retrieval was the largest single architectural lever}{subsection.7.2}{}}
+\newlabel{sec:retrievalquality}{{7.2}{31}{Retrieval-quality vs error}{section*.54}{}}
+\@writefile{toc}{\contentsline {paragraph}{Retrieval-quality vs error.}{31}{section*.54}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {14}{\ignorespaces Top-$1$ \textsc  {knn}{} query distance (km, log scale) vs per-route \textsc  {ade}{} (m, log scale) on the production v10+router checkpoint, bucketed by GT arc length. Rank correlation $\rho $ shown in each panel title. The correlation is non-trivial on the short bucket (retrieval-distance predicts model error) and weakens on medium and long buckets.\relax }}{31}{figure.caption.55}\protected@file@percent }
+\newlabel{fig:retrqual}{{14}{31}{Top-$1$ \knn {} query distance (km, log scale) vs per-route \ade {} (m, log scale) on the production v10+router checkpoint, bucketed by GT arc length. Rank correlation $\rho $ shown in each panel title. The correlation is non-trivial on the short bucket (retrieval-distance predicts model error) and weakens on medium and long buckets.\relax }{figure.caption.55}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Data quality was the largest single intervention measured here}{32}{subsection.7.3}\protected@file@percent }
+\newlabel{sec:dataquality}{{7.3}{32}{Data quality was the largest single intervention measured here}{subsection.7.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {8}Summary, conclusion and outlook}{32}{section.8}\protected@file@percent }
+\newlabel{sec:conclusion}{{8}{32}{Summary, conclusion and outlook}{section.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.1}Summary}{32}{subsection.8.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.2}Experimental design}{32}{subsection.8.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.3}Limitations}{33}{subsection.8.3}\protected@file@percent }
+\newlabel{sec:limitations}{{8.3}{33}{Limitations}{subsection.8.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.4}Future work}{33}{subsection.8.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.5}Closing remark}{34}{subsection.8.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {A}Training pseudocode}{34}{appendix.A}\protected@file@percent }
+\newlabel{app:train}{{A}{34}{Training pseudocode}{appendix.A}{}}
+\@writefile{loa}{\contentsline {algorithm}{\numberline {2}{\ignorespaces Training loop for the production model.\relax }}{34}{algorithm.2}\protected@file@percent }
+\newlabel{alg:train}{{2}{34}{Training loop for the production model.\relax }{algorithm.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {B}Complete results tables}{35}{appendix.B}\protected@file@percent }
+\newlabel{app:results}{{B}{35}{Complete results tables}{appendix.B}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {B.1}v1 -- next-step displacement prediction}{35}{subsection.B.1}\protected@file@percent }
+\newlabel{app:v1}{{B.1}{35}{v1 -- next-step displacement prediction}{subsection.B.1}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {16}{\ignorespaces v1 single-step prediction results. \textsc  {ade}/\textsc  {fde}{} are per-step distances in metres.\relax }}{35}{table.caption.56}\protected@file@percent }
+\newlabel{tab:v1_results}{{16}{35}{v1 single-step prediction results. \ade /\fde {} are per-step distances in metres.\relax }{table.caption.56}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {B.2}v2 onward -- unified cleaned-corpus ladder}{35}{subsection.B.2}\protected@file@percent }
+\newlabel{app:vN}{{B.2}{35}{v2 onward -- unified cleaned-corpus ladder}{subsection.B.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {17}{\ignorespaces Unified cleaned-corpus ladder. Mean $\pm $ std over 5 disjoint 500-route subsamples; trained checkpoint held fixed.\relax }}{35}{table.caption.57}\protected@file@percent }
+\newlabel{tab:full_results}{{17}{35}{Unified cleaned-corpus ladder. Mean $\pm $ std over 5 disjoint 500-route subsamples; trained checkpoint held fixed.\relax }{table.caption.57}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {C}Abandoned and historical variants}{36}{appendix.C}\protected@file@percent }
+\newlabel{app:abandoned}{{C}{36}{Abandoned and historical variants}{appendix.C}{}}
+\@writefile{toc}{\contentsline {paragraph}{MVP, v2, v3 -- checkpoint reload failure.}{36}{section*.58}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{v6 / v7 -- obstacle conditioning (parked).}{36}{section*.59}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{v11 -- Halton-cone pointer (parked).}{36}{section*.60}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{v12 -- water-cell K-ring pointer (abandoned).}{36}{section*.61}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {D}Repository availability}{36}{appendix.D}\protected@file@percent }
+\newlabel{app:repo}{{D}{36}{Repository availability}{appendix.D}{}}
+\@writefile{toc}{\contentsline {paragraph}{Reproducing the headline numbers.}{36}{section*.62}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {E}Audit summary}{37}{appendix.E}\protected@file@percent }
+\newlabel{app:audit}{{E}{37}{Audit summary}{appendix.E}{}}
+\bibstyle{plain}
+\bibdata{report_v2}
+\bibcite{borgeaud2022retro}{1}
+\bibcite{capobianco2021lstm}{2}
+\bibcite{khandelwal2020nearest}{3}
+\bibcite{lewis2020retrieval}{4}
+\bibcite{liang2022generative}{5}
+\bibcite{nguyen2020transformer}{6}
+\bibcite{salzmann2020trajectronpp}{7}
+\bibcite{vaswani2017attention}{8}
+\bibcite{wang2019tggan}{9}
+\bibcite{wessel1996gshhs}{10}
+\gdef \@abspage@last{38}

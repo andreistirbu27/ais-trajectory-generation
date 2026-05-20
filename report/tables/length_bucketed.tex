@@ -1,0 +1,13 @@
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Method} & \ade{} short (m) & \ade{} medium (m) & \ade{} long (m) \\
+                & ($<$50~km)       & (50--500~km)      & ($>$500~km) \\
+\midrule
+v5 (+ scheduled sampling) & 1723 $\pm$ 84 & 10352 $\pm$ 275 & 39576 $\pm$ 5602 \\
+v9 (mean-pool retrieval) & 1695 $\pm$ 65 & 9541 $\pm$ 341 & 33805 $\pm$ 6182 \\
+v10 raw & 2078 $\pm$ 80 & 7516 $\pm$ 250 & 27639 $\pm$ 4548 \\
+\textbf{v10 + router (production)} & 2137 $\pm$ 79 & 7517 $\pm$ 258 & 27416 $\pm$ 4625 \\
+Retrieval top-1 (zero training) & 4919 $\pm$ 510 & 14992 $\pm$ 807 & 36824 $\pm$ 4969 \\
+Great-circle baseline & 1431 $\pm$ 54 & 10634 $\pm$ 452 & 60138 $\pm$ 6511 \\
+\bottomrule
+\end{tabular}

@@ -76,17 +76,33 @@ def train_val_split_gen(
     track_ids: np.ndarray,
     val_frac: float,
     seed: int,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray,
-           np.ndarray, np.ndarray, np.ndarray]:
+    test_frac: float = 0.0,
+):
     """Split trajectory arrays by root MMSI (no leakage between vessel segments).
 
-    Returns:
+    Default behaviour (test_frac=0.0) preserves the original two-way split:
         (train_traj, train_vtypes, train_ids,
          val_traj,   val_vtypes,   val_ids)
+
+    With test_frac > 0 a third partition is carved out *first*, then val_frac
+    is taken from the remainder. Returns six extra arrays:
+        (train_traj, train_vtypes, train_ids,
+         val_traj,   val_vtypes,   val_ids,
+         test_traj,  test_vtypes,  test_ids)
+
+    The test partition is MMSI-grouped and stable across runs given the same
+    seed — used for a final held-out evaluation, separate from the val split
+    used during training.
     """
     N = len(trajectories)
     if N <= 1 or val_frac <= 0:
         empty = np.array([], dtype=trajectories.dtype).reshape(0, *trajectories.shape[1:])
+        if test_frac > 0:
+            return (trajectories, vessel_types, track_ids,
+                    empty, np.array([], dtype=vessel_types.dtype),
+                    np.array([], dtype=track_ids.dtype),
+                    empty.copy(), np.array([], dtype=vessel_types.dtype),
+                    np.array([], dtype=track_ids.dtype))
         return (trajectories, vessel_types, track_ids,
                 empty, np.array([], dtype=vessel_types.dtype),
                 np.array([], dtype=track_ids.dtype))
@@ -99,20 +115,34 @@ def train_val_split_gen(
 
     root_ids = sorted(root_to_indices.keys())
     random.Random(seed).shuffle(root_ids)
-    n_val = max(1, int(len(root_ids) * val_frac))
-    val_roots = set(root_ids[:n_val])
 
-    val_idx = []
-    train_idx = []
+    # Carve out test roots FIRST (so adding test_frac later doesn't disturb
+    # the val partition for the same seed when test_frac=0).
+    n_total = len(root_ids)
+    n_test = int(n_total * test_frac) if test_frac > 0 else 0
+    n_val  = max(1, int(n_total * val_frac))
+    test_roots = set(root_ids[:n_test])
+    val_roots  = set(root_ids[n_test:n_test + n_val])
+
+    test_idx, val_idx, train_idx = [], [], []
     for root, indices in root_to_indices.items():
-        if root in val_roots:
+        if root in test_roots:
+            test_idx.extend(indices)
+        elif root in val_roots:
             val_idx.extend(indices)
         else:
             train_idx.extend(indices)
 
     train_idx = np.array(sorted(train_idx), dtype=np.intp)
-    val_idx = np.array(sorted(val_idx), dtype=np.intp)
+    val_idx   = np.array(sorted(val_idx),   dtype=np.intp)
+    test_idx  = np.array(sorted(test_idx),  dtype=np.intp)
 
+    if test_frac > 0:
+        return (
+            trajectories[train_idx], vessel_types[train_idx], track_ids[train_idx],
+            trajectories[val_idx],   vessel_types[val_idx],   track_ids[val_idx],
+            trajectories[test_idx],  vessel_types[test_idx],  track_ids[test_idx],
+        )
     return (
         trajectories[train_idx], vessel_types[train_idx], track_ids[train_idx],
         trajectories[val_idx],   vessel_types[val_idx],   track_ids[val_idx],
@@ -213,6 +243,8 @@ def get_trajgen_loader(
     shuffle: bool = True,
     drop_last: bool = True,
     num_workers: int = 0,
+    pin_memory: bool = False,
+    persistent_workers: bool = False,
 ) -> DataLoader:
     """Create a DataLoader for trajectory generation."""
     ds = TrajectoryGenDataset(trajectories, vessel_types, vtype_vocab, scalers)
@@ -223,4 +255,6 @@ def get_trajgen_loader(
         drop_last=drop_last,
         collate_fn=trajgen_collate,
         num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=persistent_workers and num_workers > 0,
     )

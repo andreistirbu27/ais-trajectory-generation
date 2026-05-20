@@ -1,0 +1,39 @@
+# v9 retrained on cleaned corpus with the same 3-way split as v10.
+# Re-uses the same KNN cache built for v10 (test_frac=0.05 partition).
+
+data_npz: data/processed/trajgen_128_clean.npz
+out_dir: runs/trajgen_v9_retrieval_clean
+
+val_frac: 0.15
+test_frac: 0.05
+seed: 42
+
+k_retrieval: 5
+retrieval_vtype_weight: 0.5
+exclude_self: true
+knn_cache: data/processed/trajgen_128_clean_knn_k5_test005.npz
+
+route_encoder: mean_pool
+
+d_model: 256
+nhead: 8
+num_encoder_layers: 2
+num_decoder_layers: 4
+dim_feedforward: 1024
+dropout: 0.1
+
+batch_size: 64
+epochs: 60
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+
+lambda_end: 10.0
+lambda_smooth: 1.0
+
+ss_warmup_epochs: 999
+ss_max_prob: 0.0
+
+val_eval_batches: 30
+log_every: 100

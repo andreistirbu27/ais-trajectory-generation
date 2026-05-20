@@ -31,3 +31,11 @@ runs/*
 *.md
 *.md
 *.txt
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+*.bbl
+*.blg

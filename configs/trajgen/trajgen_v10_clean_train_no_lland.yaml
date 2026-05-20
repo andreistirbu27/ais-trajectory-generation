@@ -1,0 +1,48 @@
+# v10 on cleaned corpus, lambda_land = 0.0 (L_land ablation).
+#
+# Critique question: does the land-aware loss matter at all, or does the
+# snap-only post-processor do all the water-validity work? This run isolates
+# it. Everything else matches trajgen_v10_clean_train_seed42.yaml so the
+# only difference is L_land = 0 at training time.
+#
+# Eval: feed this checkpoint to scripts/eval/eval_gen_v10_router.py to get
+# matched-protocol ADE, FDE, land%, cross%. Compare against the seed=42
+# clean-train baseline.
+
+data_npz: data/processed/trajgen_128_clean.npz
+out_dir: runs/trajgen_v10_clean_train_no_lland
+
+val_frac: 0.15
+test_frac: 0.05
+seed: 42
+
+k_retrieval: 5
+retrieval_vtype_weight: 0.5
+exclude_self: true
+knn_cache: data/processed/trajgen_128_clean_knn_k5_test005.npz
+t_retr: 32
+
+d_model: 256
+nhead: 8
+num_encoder_layers: 2
+num_decoder_layers: 4
+dim_feedforward: 1024
+dropout: 0.1
+k_past: 32
+
+batch_size: 64
+epochs: 60
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+
+lambda_end: 10.0
+lambda_smooth: 1.0
+lambda_land: 0.0           # <- the ablation knob
+
+land_sdf: data/processed/land_sdf_050deg.npz
+land_threshold_km: 10.0    # unused when lambda_land=0 but kept for parity
+
+val_eval_batches: 30
+log_every: 100

@@ -1,0 +1,48 @@
+# v10 retrained on the cleaned (E1-filtered) corpus, seed 42.
+#
+# Motivation: the original runs/trajgen_v10 checkpoint was trained on
+# trajgen_128.npz (dirty, 207k tracks, GT 10.83% land@10km). The cleaned-corpus
+# val set shares 84% of its MMSIs with that dirty training set
+# (see results/mmsi_overlap.txt). This run eliminates that leakage by training
+# on the cleaned corpus directly.
+#
+# All hyperparameters match trajgen_v10.yaml; only data_npz and knn_cache
+# change, so any ADE difference attributable to data is isolated.
+
+data_npz: data/processed/trajgen_128_clean.npz
+out_dir: runs/trajgen_v10_clean_train_seed42
+
+val_frac: 0.15
+test_frac: 0.05            # held out for final-only test eval (Tier 4)
+seed: 42
+
+k_retrieval: 5
+retrieval_vtype_weight: 0.5
+exclude_self: true
+knn_cache: data/processed/trajgen_128_clean_knn_k5_test005.npz
+t_retr: 32
+
+d_model: 256
+nhead: 8
+num_encoder_layers: 2
+num_decoder_layers: 4
+dim_feedforward: 1024
+dropout: 0.1
+k_past: 32
+
+batch_size: 64
+epochs: 60
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+
+lambda_end: 10.0
+lambda_smooth: 1.0
+lambda_land: 0.01
+
+land_sdf: data/processed/land_sdf_050deg.npz
+land_threshold_km: 10.0
+
+val_eval_batches: 30
+log_every: 100

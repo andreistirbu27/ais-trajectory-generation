@@ -1,0 +1,40 @@
+# v10 HP sweep: lambda_end = 25 (2.5x the production value of 10).
+# Tests sensitivity of endpoint constraint weight. v2/v3 originally used 50.
+
+data_npz: data/processed/trajgen_128_clean.npz
+out_dir: runs/trajgen_v10_clean_train_lambdaend25
+
+val_frac: 0.15
+test_frac: 0.05
+seed: 42
+
+k_retrieval: 5
+retrieval_vtype_weight: 0.5
+exclude_self: true
+knn_cache: data/processed/trajgen_128_clean_knn_k5_test005.npz
+t_retr: 32
+
+d_model: 256
+nhead: 8
+num_encoder_layers: 2
+num_decoder_layers: 4
+dim_feedforward: 1024
+dropout: 0.1
+k_past: 32
+
+batch_size: 64
+epochs: 60
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+
+lambda_end: 25.0
+lambda_smooth: 1.0
+lambda_land: 0.01
+
+land_sdf: data/processed/land_sdf_050deg.npz
+land_threshold_km: 10.0
+
+val_eval_batches: 30
+log_every: 100

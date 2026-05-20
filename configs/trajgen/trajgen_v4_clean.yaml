@@ -1,0 +1,33 @@
+# v4 retrained on cleaned corpus with the same 3-way split as v10
+# (val_frac=0.15, test_frac=0.05, seed=42). Architecture-controlled
+# comparison for the unified ladder.
+#
+# Usage:
+#   python3 scripts/train/train_gen.py --config configs/trajgen/trajgen_v4_clean.yaml
+
+data_npz: data/processed/trajgen_128_clean.npz
+out_dir: runs/trajgen_v4_clean
+
+val_frac: 0.15
+test_frac: 0.05
+seed: 42
+
+d_model: 256
+nhead: 8
+num_encoder_layers: 2
+num_decoder_layers: 4
+dim_feedforward: 1024
+dropout: 0.1
+
+batch_size: 64
+epochs: 60
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+
+lambda_end: 10.0
+lambda_smooth: 1.0
+
+val_eval_batches: 30
+log_every: 100

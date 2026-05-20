@@ -105,20 +105,28 @@ def build_and_cache_knn(
     seed: int,
     k: int,
     vtype_weight: float,
+    test_frac: float = 0.0,
 ) -> Dict[str, np.ndarray]:
     """Build KNN indices for train-self-exclusion and val-from-train. Cache to disk.
 
     Writes an NPZ with:
         train_knn : (Ntrain, k) int64 — retrieved indices within train set
         val_knn   : (Nval,   k) int64 — retrieved indices within train set
+        test_knn  : (Ntest,  k) int64 — retrieved indices within train set
+                                         (only when test_frac > 0)
 
-    Cached by (data_npz_path, val_frac, seed, k, vtype_weight) — recompute
-    if any of these change.
+    Cached by (data_npz_path, val_frac, seed, k, vtype_weight, test_frac) —
+    callers MUST use a cache path that distinguishes the test_frac if they
+    use a non-default value; otherwise the indices will point into the
+    wrong partition.
     """
     if os.path.exists(cache_path):
         d = np.load(cache_path, allow_pickle=True)
         print(f"  [retrieval] loaded KNN cache from {cache_path}")
-        return {"train_knn": d["train_knn"], "val_knn": d["val_knn"]}
+        out = {"train_knn": d["train_knn"], "val_knn": d["val_knn"]}
+        if "test_knn" in d.files:
+            out["test_knn"] = d["test_knn"]
+        return out
 
     print(f"  [retrieval] building KNN index → {cache_path}")
     data = np.load(data_npz_path, allow_pickle=True)
@@ -126,9 +134,17 @@ def build_and_cache_knn(
     vessel_types = data["vessel_types"].astype(np.int32)
     track_ids    = data["track_ids"]
 
-    (train_traj, train_vt, _,
-     val_traj,   val_vt,   _) = train_val_split_gen(
-        trajectories, vessel_types, track_ids, val_frac, seed)
+    if test_frac > 0:
+        (train_traj, train_vt, _,
+         val_traj,   val_vt,   _,
+         test_traj,  test_vt,  _) = train_val_split_gen(
+            trajectories, vessel_types, track_ids,
+            val_frac, seed, test_frac=test_frac)
+    else:
+        (train_traj, train_vt, _,
+         val_traj,   val_vt,   _) = train_val_split_gen(
+            trajectories, vessel_types, track_ids, val_frac, seed)
+        test_traj = test_vt = None
 
     # Train queries retrieve from train (self-exclusion)
     print(f"  [retrieval] train KNN: {len(train_traj):,} queries × corpus")
@@ -142,9 +158,18 @@ def build_and_cache_knn(
         val_traj, val_vt, train_traj, train_vt,
         k=k, vtype_weight=vtype_weight, exclude_self=False)
 
+    out = {"train_knn": train_knn, "val_knn": val_knn}
+
+    if test_traj is not None:
+        print(f"  [retrieval] test KNN: {len(test_traj):,} queries × train corpus")
+        test_knn = build_knn_index(
+            test_traj, test_vt, train_traj, train_vt,
+            k=k, vtype_weight=vtype_weight, exclude_self=False)
+        out["test_knn"] = test_knn
+
     os.makedirs(os.path.dirname(cache_path) or ".", exist_ok=True)
-    np.savez(cache_path, train_knn=train_knn, val_knn=val_knn)
-    return {"train_knn": train_knn, "val_knn": val_knn}
+    np.savez(cache_path, **out)
+    return out
 
 
 # ─── Dataset ────────────────────────────────────────────────────────────────
@@ -239,6 +264,8 @@ def get_retrieval_trajgen_loader(
     shuffle: bool = True,
     drop_last: bool = True,
     num_workers: int = 0,
+    pin_memory: bool = False,
+    persistent_workers: bool = False,
 ) -> DataLoader:
     ds = RetrievalTrajectoryGenDataset(
         trajectories, vessel_types, corpus_trajectories,
@@ -251,4 +278,6 @@ def get_retrieval_trajgen_loader(
         drop_last=drop_last,
         collate_fn=retrieval_trajgen_collate,
         num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=persistent_workers and num_workers > 0,
     )

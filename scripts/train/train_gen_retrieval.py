@@ -112,22 +112,25 @@ def train_one_epoch(model, loader, optimizer, scheduler, device, grad_clip,
                     epoch, scalers, lambda_end, lambda_smooth,
                     val_loader=None, val_eval_batches=30,
                     global_step_offset=0, metrics_path=None, log_every=50,
-                    ss_prob=0.0):
+                    ss_prob=0.0, amp_enabled=False):
     model.train()
     running = {"delta": 0, "endpoint": 0, "smooth": 0, "total": 0}
     n = 0
+    autocast_ctx = (lambda: torch.autocast(device_type=device.type,
+                                            dtype=torch.bfloat16,
+                                            enabled=amp_enabled))
 
     pbar = tqdm(enumerate(loader), total=len(loader),
                 desc=f"  Epoch {epoch}", unit="batch", leave=False)
     for i, batch in pbar:
-        batch = {k: v.to(device) for k, v in batch.items()}
+        batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
 
-        optimizer.zero_grad()
-        pred_deltas, input_traj = _forward(model, batch, ss_prob, scalers)
-
-        loss, loss_dict = compute_loss(
-            pred_deltas, batch, scalers, lambda_end, lambda_smooth,
-            input_traj=input_traj)
+        optimizer.zero_grad(set_to_none=True)
+        with autocast_ctx():
+            pred_deltas, input_traj = _forward(model, batch, ss_prob, scalers)
+            loss, loss_dict = compute_loss(
+                pred_deltas, batch, scalers, lambda_end, lambda_smooth,
+                input_traj=input_traj)
 
         loss.backward()
         grad_norm = nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
@@ -141,6 +144,7 @@ def train_one_epoch(model, loader, optimizer, scheduler, device, grad_clip,
         if (i + 1) % log_every == 0:
             avg = {k: running[k] / n for k in running}
             val_str = ""
+            val_loss = None
             if val_loader is not None and val_eval_batches > 0:
                 val_loss = _val_subsample(
                     model, val_loader, val_eval_batches, device, scalers,
@@ -157,7 +161,7 @@ def train_one_epoch(model, loader, optimizer, scheduler, device, grad_clip,
 
             global_step = global_step_offset + i + 1
             if metrics_path is not None:
-                val_str_csv = f"{val_loss:.6f}" if val_loader else ""
+                val_str_csv = f"{val_loss:.6f}" if val_loss is not None else ""
                 with open(metrics_path, "a") as f:
                     f.write(f"{global_step},{epoch},{avg['total']:.6f},"
                             f"{val_str_csv},,\n")
@@ -220,6 +224,9 @@ def main():
     # Dataset
     parser.add_argument("--val_frac", type=float, default=0.15)
     parser.add_argument("--seed",     type=int,   default=42)
+    parser.add_argument("--test_frac", type=float, default=0.0,
+        help="Hold out a third MMSI-grouped partition for final-only test "
+             "eval. Default 0 = original two-way train/val split.")
 
     # Retrieval
     parser.add_argument("--k_retrieval",           type=int,   default=5)
@@ -246,6 +253,12 @@ def main():
     parser.add_argument("--grad_clip",     type=float, default=1.0)
     parser.add_argument("--warmup_frac",   type=float, default=0.05)
     parser.add_argument("--num_workers",   type=int,   default=0)
+    parser.add_argument("--train_seed",    type=int,   default=None,
+        help="Seed for model init / dataloader shuffling (defaults to --seed).")
+    parser.add_argument("--amp", choices=["off", "bf16"], default="bf16",
+        help="Mixed-precision (Ampere+). Default bf16; 'off' to disable.")
+    parser.add_argument("--pin_memory", action="store_true", default=True)
+    parser.add_argument("--no_pin_memory", dest="pin_memory", action="store_false")
 
     # Loss weights
     parser.add_argument("--lambda_end",    type=float, default=10.0)
@@ -281,15 +294,23 @@ def main():
     if not args.knn_cache:
         parser.error("--knn_cache is required (path for cached KNN index)")
 
-    set_seed(args.seed)
+    train_seed = args.train_seed if args.train_seed is not None else args.seed
+    set_seed(train_seed)
     device = get_device()
+    amp_enabled = (args.amp == "bf16" and device.type == "cuda")
+    if device.type == "cuda":
+        torch.set_float32_matmul_precision("high")
+        torch.backends.cudnn.benchmark = True
     os.makedirs(args.out_dir, exist_ok=True)
 
     print("=" * 65)
     print("  RETRIEVAL-AUGMENTED TRAJECTORY GENERATOR — TRAINING (v9)")
     print("=" * 65)
-    print(f"  Device  : {device}")
-    print(f"  Out dir : {args.out_dir}\n")
+    print(f"  Device       : {device}")
+    print(f"  Out dir      : {args.out_dir}")
+    print(f"  Split seed   : {args.seed}   Train seed: {train_seed}")
+    print(f"  AMP          : {'bf16' if amp_enabled else 'off'}")
+    print(f"  TF32 matmul  : {'on' if device.type == 'cuda' else 'n/a'}\n")
 
     # ── KNN index (pre-build or load from cache) ─────────────────────────────
     knn = build_and_cache_knn(
@@ -299,6 +320,7 @@ def main():
         seed=args.seed,
         k=args.k_retrieval,
         vtype_weight=args.retrieval_vtype_weight,
+        test_frac=args.test_frac,
     )
     train_knn = knn["train_knn"]
     val_knn   = knn["val_knn"]
@@ -313,9 +335,16 @@ def main():
     n_resample = trajectories.shape[1]
     print(f"  {len(trajectories):,} trajectories, {n_resample} points each\n")
 
-    (train_traj, train_vt, _,
-     val_traj,   val_vt,   _) = train_val_split_gen(
-        trajectories, vessel_types, track_ids, args.val_frac, args.seed)
+    if args.test_frac > 0:
+        (train_traj, train_vt, _,
+         val_traj,   val_vt,   _,
+         _test_traj, _test_vt, _) = train_val_split_gen(
+            trajectories, vessel_types, track_ids,
+            args.val_frac, args.seed, test_frac=args.test_frac)
+    else:
+        (train_traj, train_vt, _,
+         val_traj,   val_vt,   _) = train_val_split_gen(
+            trajectories, vessel_types, track_ids, args.val_frac, args.seed)
     print(f"  Train: {len(train_traj):,}  |  Val: {len(val_traj):,}\n")
 
     # ── Scalers ──────────────────────────────────────────────────────────────
@@ -337,18 +366,21 @@ def main():
     print(f"  Retrieval    : k={retr_cfg.k_retrieval}  encoder={args.route_encoder}"
           f"  vtype_w={retr_cfg.vtype_weight}\n")
 
+    _pin = args.pin_memory and device.type == "cuda"
     train_loader = get_retrieval_trajgen_loader(
         trajectories=train_traj, vessel_types=train_vt,
         corpus_trajectories=train_traj, knn_indices=train_knn,
         vtype_vocab=vtype_vocab, scalers=scalers, config=retr_cfg,
         batch_size=args.batch_size, shuffle=True, drop_last=True,
-        num_workers=args.num_workers)
+        num_workers=args.num_workers,
+        pin_memory=_pin, persistent_workers=args.num_workers > 0)
     val_loader = get_retrieval_trajgen_loader(
         trajectories=val_traj, vessel_types=val_vt,
         corpus_trajectories=train_traj, knn_indices=val_knn,
         vtype_vocab=vtype_vocab, scalers=scalers, config=retr_cfg,
         batch_size=args.batch_size, shuffle=False, drop_last=False,
-        num_workers=args.num_workers) if len(val_traj) > 0 else None
+        num_workers=args.num_workers,
+        pin_memory=_pin, persistent_workers=args.num_workers > 0) if len(val_traj) > 0 else None
 
     print(f"  Train batches : {len(train_loader):,}")
     if val_loader:
@@ -445,6 +477,7 @@ def main():
             metrics_path=metrics_path,
             log_every=args.log_every,
             ss_prob=ss_prob,
+            amp_enabled=amp_enabled,
         )
 
         log = (f"Epoch {epoch:3d}/{args.epochs} "

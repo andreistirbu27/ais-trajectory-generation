@@ -1,6 +1,6 @@
 # PRL: AIS Trajectory Generation
 
-Transformer-based maritime trajectory modeling from AIS data. Six approaches:
+Transformer-based maritime trajectory modeling from AIS data. Five approaches:
 
 1. **Next-step prediction (v1)**: Causal transformer predicts next-position displacement from past trajectory. Matches but cannot beat constant-velocity baseline on post-turn-segmented tracks.
 
@@ -10,19 +10,17 @@ Transformer-based maritime trajectory modeling from AIS data. Six approaches:
 
 4. **Retrieval-augmented generation (v9)**: K nearest historical routes added as encoder tokens via `MeanPoolRouteEncoder`. Best overall ADE at epoch 38 (6207 m; beats v5 by 8%, retrieval-top-1 by 4%, GC by 25%), but mean-pool collapses route shape into a single vector per neighbor — retrieval-top-1 beats v9 by 2.5× on long routes (>500 km).
 
-5. **Per-timestep retrieval + land-aware loss (v10)**: fixes v9's mean-pool bottleneck by giving the decoder `K * t_retr` per-step retrieval tokens (163 vs 8 memory tokens). Adds a differentiable SDF-based land penalty during training and a hard land projection at inference. Trained, 50 epochs. Closed 74% of the long-bucket gap to retrieval-top-1 (25964 m vs retrieval 18785 m, v9 46631 m), but overall ADE regressed to 6584 m (short-bucket 2117 → 4160 m) and land crossings stayed at 36.2% — the soft L_land cannot prevent segment crossings, only push waypoints off land. Hard projection at inference eliminates crossings but degrades ADE by 42% and breaks FDE=0 (it teleports endpoints off coastal ports). Motivated v11.
-
-6. **Pointer transformer with water-valid candidate pool (v11)**: replaces v10's regression head with a pointer (masked softmax) over K=32 candidates generated per step via a Halton fan in the forward cone. Every candidate is water-point and water-segment filtered before the model sees it, so the trajectory is water-by-construction (0.00% crossings by the constraint, no soft penalty, no hard projection). Auxiliary offset head refines sub-cell position. Full causal mask (v10's `k_past=32` regressed short routes). Implemented and locally smoke-tested; training pending on school machines.
+5. **Per-timestep retrieval + land-aware loss (v10)**: fixes v9's mean-pool bottleneck by giving the decoder `K * t_retr` per-step retrieval tokens (163 vs 8 memory tokens). Adds a differentiable SDF-based land penalty during training and a hard land projection at inference. Implemented, not yet trained.
 
 ## Structure
 - `scripts/data/`   data pipeline: fetch, prepare, batch pipeline, split utilities, `prepare_trajgen.py` (NPZ dataset builder), `build_land_sdf.py` (v10 land SDF raster)
-- `scripts/train/`  training: `train_disp.py` (v1 displacement), `train_vel.py` (v1 velocity), `train_gen.py` (v2 trajectory generation, supports `--resume`), `train_gen_obs.py` (v6/v7 obstacle-conditioned), `train_gen_retrieval.py` (v9), `train_gen_v10.py` (v10), `train_gen_v11.py` (v11)
-- `scripts/eval/`   evaluation: metrics, visualizations, diagnostics, `eval_gen.py`/`visualize_gen.py` (v2), `eval_obstacle_gen.py`/`visualize_obstacle_gen.py` (v6), `retrieval_baseline.py`/`eval_gen_retrieval.py` (v9), `eval_gen_v10.py`/`visualize_gen_v10.py` + `land_crossing_diagnostic.py` (v10), `eval_gen_v11.py`/`visualize_gen_v11.py` (v11)
-- `src/`            reusable modules: `model.py`/`data.py`/`metrics.py` (v1), `*_gen.py` (v2), `*_gen_obs.py` (v6), `*_gen_retrieval.py` (v9), `model_gen_v10.py` + `land_mask.py` (v10), `model_gen_v11.py` + `data_gen_v11.py` + `candidates.py` (v11)
+- `scripts/train/`  training: `train_disp.py` (v1 displacement), `train_vel.py` (v1 velocity), `train_gen.py` (v2 trajectory generation, supports `--resume`), `train_gen_obs.py` (v6/v7 obstacle-conditioned), `train_gen_retrieval.py` (v9), `train_gen_v10.py` (v10)
+- `scripts/eval/`   evaluation: metrics, visualizations, diagnostics, `eval_gen.py`/`visualize_gen.py` (v2), `eval_obstacle_gen.py`/`visualize_obstacle_gen.py` (v6), `retrieval_baseline.py`/`eval_gen_retrieval.py` (v9), `eval_gen_v10.py` + `land_crossing_diagnostic.py` (v10)
+- `src/`            reusable modules: `model.py`/`data.py`/`metrics.py` (v1), `*_gen.py` (v2), `*_gen_obs.py` (v6), `*_gen_retrieval.py` (v9), `model_gen_v10.py` + `land_mask.py` (v10)
 - `configs/`        YAML experiment configs grouped by approach (`displacement/`, `trajgen/`, `obstacle/`, `retrieval/`)
 - `notebooks/`      exploratory notebooks
 - `docs/references/` papers and links
-- `data/`           datasets (not tracked). `data/processed/land_sdf_050deg.npz` and `land_sdf_005deg.npz` are v10/v11 SDF rasters.
+- `data/`           datasets (not tracked). `data/processed/land_sdf_050deg.npz` is the v10 SDF raster.
 - `runs/`           training outputs / checkpoints (not tracked)
 - `outputs/`        evaluation plots and diagnostics (not tracked)
 
@@ -151,7 +149,7 @@ python3 scripts/train/train_gen.py --config configs/trajgen_v5.yaml \
 
 ```bash
 # Train (v5 architecture + obstacle tokens + penetration loss)
-python3 scripts/train/train_gen_obs.py --config configs/trajgen_v6_obstacle.yaml
+python3 scripts/train/train_gen_obs.py --config configs/obstacle/trajgen_v6_obstacle.yaml
 
 # Evaluate: clean ADE + obstacle avoidance rate / clearance / path overhead
 python3 scripts/eval/eval_obstacle_gen.py \
@@ -268,62 +266,73 @@ Land-crossing baselines (from v9 eval):
 
 v10 success criteria: long-bucket ADE at least halfway between v9 (46631 m) and retrieval-top-1 (18785 m); v10 + hard projection land-crossing rate ≈ GT (≤ 11% at 10 km threshold).
 
-**v10 outcome (50 epochs):**
+### v11 — per-step Halton candidate cone (failed)
 
-| Metric | v10 raw | v10 + hard proj | v9 (ep 38) | retr-top-1 |
-|---|---:|---:|---:|---:|
-| ADE overall | 6584 m | ~9340 m | 6207 m | 6470 m |
-| ADE short (<50 km) | 4160 m | — | 2117 m | 3366 m |
-| ADE long (>500 km) | 25964 m | — | 46631 m | 18785 m |
-| traj_crossing_rate | 36.2% | 0.00% | 39.8% | 35.6% |
-| FDE | 0 m | non-zero | 0 m | 5603 m |
+Replaced continuous regression with a per-step pointer over a Halton-sampled forward cone (3–25 km radius, ±90°). Catastrophically mismatched to the data: median GT step is 0.34 km, so the cone always overshot. ADE 30 km, path-length ratio 13×. Parked; informed v12.
 
-Closed 74% of the v9 → retrieval-top-1 long-bucket gap (the PerStepRouteEncoder worked), but regressed overall ADE because the short-bucket jumped from 2117 → 4160 m. Root causes: (a) the windowed mask `k_past=32` anchors too locally for short straight routes; (b) the soft `L_land` can push individual waypoints off land but cannot prevent segment crossings — 36% of trajectories still cross land because two consecutive water-valid waypoints can span a peninsula; (c) hard projection at inference breaks `FDE=0` because it teleports snapped endpoints off coastal ports. v11 addresses all three.
-
-### v11 — Pointer transformer with water-valid candidate pool
+### v12 — pointer over K-ring of a partitioned water graph
 
 ```bash
-# Train v11-lite (reuses v9 KNN cache + fine-resolution land SDF)
-python3 scripts/train/train_gen_v11.py \
-    --config configs/trajgen/trajgen_v11.yaml
-
-# Resume v11
-python3 scripts/train/train_gen_v11.py \
-    --config configs/trajgen/trajgen_v11.yaml \
-    --resume runs/trajgen_v11_lite/best.pt
-
-# Eval v11 (strict 0-km land-crossing check — expect 0.00% by construction)
-python3 scripts/eval/eval_gen_v11.py \
-    --data_npz data/processed/trajgen_128.npz \
-    --checkpoint runs/trajgen_v11_lite/best.pt \
-    --knn_cache data/processed/trajgen_128_knn_k5.npz \
+# One-shot data build
+python3 scripts/data/build_water_graph.py \
     --land_sdf data/processed/land_sdf_005deg.npz \
-    --n_eval 500 --no_frechet
-
-# Visualize v11 (GT + v11 + retrieval + GC, optional candidate fans)
-python3 scripts/eval/visualize_gen_v11.py \
+    --output data/processed/water_graph_005deg.npz \
+    --tau_km 0.5
+python3 scripts/data/quantize_trajgen.py \
     --data_npz data/processed/trajgen_128.npz \
-    --checkpoint runs/trajgen_v11_lite/best.pt \
+    --water_graph data/processed/water_graph_005deg.npz \
+    --output data/processed/trajgen_128_cells_005deg.npz
+
+# Train v12 (full 40-epoch schedule, K=4, with endpoint + ADE + course terms)
+python3 scripts/train/train_gen_v12.py --config configs/trajgen/trajgen_v12.yaml
+
+# Resume v12
+python3 scripts/train/train_gen_v12.py --config configs/trajgen/trajgen_v12.yaml \
+    --resume runs/trajgen_v12/best.pt
+
+# Train/val curves
+python3 scripts/eval/plot_curves_v12.py --csv runs/trajgen_v12/metrics.csv
+
+# Evaluate v12 (ADE/FDE + length buckets + structural land-crossing)
+python3 scripts/eval/eval_gen_v12.py \
+    --checkpoint runs/trajgen_v12/best.pt \
+    --water_graph data/processed/water_graph_005deg.npz \
+    --quantized_npz data/processed/trajgen_128_cells_005deg.npz \
     --knn_cache data/processed/trajgen_128_knn_k5.npz \
-    --land_sdf data/processed/land_sdf_005deg.npz \
-    --out_dir outputs/viz_v11_lite
+    --land_sdf data/processed/land_sdf_050deg.npz \
+    --n_eval 500 --no_frechet --seed 42
+
+# Visualize v12 trajectories
+python3 scripts/eval/visualize_gen_v12.py \
+    --checkpoint runs/trajgen_v12/best.pt \
+    --water_graph data/processed/water_graph_005deg.npz \
+    --quantized_npz data/processed/trajgen_128_cells_005deg.npz \
+    --knn_cache data/processed/trajgen_128_knn_k5.npz \
+    --out_dir outputs/viz_v12
 ```
 
-Three changes vs v10:
+Approach: quantize the trajectory space onto the same 0.005° grid as the SDF (~0.47 × 0.55 km cells; ~9000 × 13000 over the bbox). Cells with `sdf_km ≤ -0.5 km` are labelled water. At each decoder step, candidates = K-ring of Chebyshev-distance ≤ K around the current cell + an END token. Water-validity is **structural**: land cells get `-inf` logit before softmax, so the route cannot cross land — no post-hoc projection needed. A small offset head regresses ±0.5 cell-edges within the chosen cell for sub-km precision.
 
-1. **Pointer head over candidate pool** (`src/model_gen_v11.py::TrajectoryGeneratorV11`): at each step, K=32 candidates are sampled in the forward cone (`±60°` toward the destination, radius 3–25 km) via a pre-computed Halton 2D quasi-random grid. Each candidate is filtered through (i) bbox, (ii) water-point SDF lookup, (iii) 5-interior-sample segment-water check. Only valid candidates get non-`-inf` logits. Logit = `dot(candidate_embed, h_t) / sqrt(d_model)`. An auxiliary `offset_head` refines the selected candidate in normalized delta space (re-verified water-valid; discarded if offset pushes off water).
+**v12-lite-v2 (15 epochs, K=10, CE + offset + smooth only)** regressed catastrophically vs v9/v10:
 
-2. **GT-insertion training signal** (`src/candidates.py::insert_gt_into_candidates`): the ground-truth next step is injected into the candidate pool at slot 0 when the GT segment passes the filter. Otherwise the closest valid candidate is used as the target (`gt_index = argmin ||gt - cand||` over valid slots); if no valid candidate exists, `gt_index = -100` (CE ignore_index). Guarantees the pointer sees a feasible target on clean open-sea samples.
+| | v9 (ep 38) | retr-top1 | GC | **v12-lite-v2 (ep 15)** |
+|---|---:|---:|---:|---:|
+| ADE | 6207 m | 6741 m | 8539 m | **21879 m** |
+| FDE | 0 m | 6160 m | 0.1 m | **33503 m** |
+| ADE long | 46631 m | 22845 m | 95900 m | **148139 m** |
+| path_length_ratio | — | 1.00 | 0.91 | **1.35** |
+| traj_cross @ 0 km | — | — | — | **42.8% (GT 85%)** ✓ |
 
-3. **Water-by-construction, no L_land** (`src/candidates.py`): because the candidate pool is pre-filtered, any trajectory the model can produce consists entirely of water-valid waypoints connected by water-valid segments. `traj_crossing_rate = 0.00%` at `threshold_km = 0` is a hard guarantee, not a soft target. No inference projection, no post-hoc fixup. Loss simplifies from `L_delta + L_end + L_smooth + L_land` to `L_CE + λ_offset·L_offset + λ_smooth·L_smooth`.
+Top-1 cell accuracy reached 82% but did not aggregate over 128 steps — same lesson as v2→v5: per-step accuracy is not predictive of route ADE. FDE = endpoint_error_m exactly because there was no signal to reach the destination. Predicted routes drifted laterally (Manhattan zigzags) because the K=10 ring (441 cells) had no course-alignment penalty.
 
-Inference uses a fallback cascade for empty candidate pools (rare): widen cone to ±120° → shrink `d_min_km` to 1 → snap to nearest water along the bearing-to-end ray → flag infeasible. The final step snaps to `end` directly if the segment is water (preserving FDE=0 for most samples).
+**Fixes in `configs/trajgen/trajgen_v12.yaml` (full 40-epoch run)**:
+1. **Linear endpoint correction + water-snap in `generate()`** — distributes residual end-error across all points with `fracs ∈ [0, 1]`, then re-snaps each corrected point to the nearest water cell (BFS over the water mask). Drives FDE → 0 without retraining. Matches v9/v10 pattern.
+2. **`λ_endpoint` (km² endpoint loss) + `λ_ade` (km-space per-step MSE)** — supervise on what we measure (ADE), not just CE. Computed differentiably from teacher-forced cell history + predicted offsets; haversine-approximation via `111·cos(lat)`.
+3. **`λ_course` (1 − cos(angle))** — penalizes lateral drift via the softmax-weighted ring offset vs direction-to-end. Differentiable through pointer logits, counters Manhattan-zigzag failures.
+4. **K = 10 → 4** — covers P90 of GT cell transitions (P50=1, P75=2, P90=4). Reduces n_cand 441 → 81; sharpens CE; restricts pointer to dominant transition mode.
+5. **Epochs 15 → 40, lr 3e-4 → 5e-4, warmup 5% → 3%** — v12-lite-v2's cosine LR schedule died at epoch 12 with train_loss still > val_loss; full schedule keeps effective LR alive through epoch 30.
 
-v11 success gates:
-
-1. **Strict** `traj_crossing_rate = 0.00%` at threshold 0 km (by construction — any non-zero value is a bug in the candidate filter).
-2. Overall ADE < 6584 m (beat v10).
-3. Short-bucket ADE < 4160 m (beat v10 short; full causal mask was the hypothesis).
+v12 success gate: ADE ≤ 7500 m AND ADE_long ≤ 25000 m AND traj_crossing@0km = 0% (structural). Strong pass: ADE ≤ 6207 m AND ADE_long ≤ 18785 m.
 
 ## Evaluation
 
@@ -357,4 +366,22 @@ python3 scripts/eval/visualize_gen.py \
 python3 scripts/eval/quick_data_viz.py \
     --data_npz data/processed/trajgen_128.npz \
     --out_dir outputs/data_viz
+
+# --- v12 (pointer over water-cell K-ring) ---
+python3 scripts/eval/eval_gen_v12.py \
+    --checkpoint runs/trajgen_v12/best.pt \
+    --water_graph data/processed/water_graph_005deg.npz \
+    --quantized_npz data/processed/trajgen_128_cells_005deg.npz \
+    --knn_cache data/processed/trajgen_128_knn_k5.npz \
+    --land_sdf data/processed/land_sdf_050deg.npz \
+    --n_eval 500 --no_frechet --seed 42
+
+python3 scripts/eval/plot_curves_v12.py --csv runs/trajgen_v12/metrics.csv
+
+python3 scripts/eval/visualize_gen_v12.py \
+    --checkpoint runs/trajgen_v12/best.pt \
+    --water_graph data/processed/water_graph_005deg.npz \
+    --quantized_npz data/processed/trajgen_128_cells_005deg.npz \
+    --knn_cache data/processed/trajgen_128_knn_k5.npz \
+    --out_dir outputs/viz_v12
 ```

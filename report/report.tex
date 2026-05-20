@@ -1,0 +1,1374 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{natbib}
+\usepackage{textcomp}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric,fit,calc}
+
+% ---- Colour definitions ----
+\definecolor{codegreen}{rgb}{0,0.5,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codebg}{rgb}{0.97,0.97,0.97}
+\definecolor{todored}{rgb}{0.8,0,0}
+
+\lstset{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+}
+
+\newcommand{\todo}[1]{\textcolor{todored}{\textbf{[TODO: #1]}}}
+\newcommand{\ade}{\textsc{ade}}
+\newcommand{\fde}{\textsc{fde}}
+
+% ---- Metadata ----
+\title{\textbf{Generative Modelling of Maritime AIS Trajectories}\\[0.5em]
+       \large An Iterative Engineering Study across Twelve Model Versions}
+\author{Andrei \c{S}tirbu\\[0.3em]
+        \normalsize \'Ecole Polytechnique\\[0.2em]
+        \normalsize Research Internship Report}
+\date{May 2026}
+
+% =====================================================================
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+% ---- Abstract ----
+\begin{abstract}
+Given a start position, a destination, and a vessel type, this report addresses the
+problem of generating a 128-point ship route that is geographically admissible (wholly
+on water), behaviourally plausible (resembling real commercial traffic), and geometrically
+sound (smooth, correct total length, zero endpoint error).
+Twelve model iterations were designed, trained, and evaluated on twelve months of
+US-region NOAA Automatic Identification System (AIS) data from 2024.
+The study spans next-step displacement prediction (v1), an encoder-decoder
+trajectory generator (v2--v5), a parked obstacle-avoidance branch (v6--v8),
+retrieval-augmented generation (v9), per-timestep retrieval with land-aware training (v10),
+and two parked pointer-based attempts (v11--v12).
+The production system---v10 at epoch~52 coupled with a WaterRouter snap-only
+post-processor evaluated on a land-filtered dataset---achieves
+\textbf{Average Displacement Error (\ade) of 6282\,m} and
+\textbf{0\,\% land-crossing} at the 10\,km threshold
+(n\,=\,500, seed\,=\,42).
+The headline architectural finding is that almost every measurable improvement
+came from data-level or post-processing changes rather than from new model
+components: per-step accuracy gains across v2--v5 produced no real-world \ade{}
+movement, retrieval (v9) was the sole architectural innovation that moved the
+needle, and the largest single \ade{} reduction ($-21$\,\%) came from
+cleaning the training dataset rather than from any model change.
+A thirteenth iteration---a conditional denoising diffusion Transformer
+(TrajDiff)---is fully specified but not yet implemented.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% =====================================================================
+\section{Introduction and Context}
+\label{sec:intro}
+
+\subsection{Maritime trajectory modelling}
+
+Shipping carries over 80\,\% of world trade by volume, making maritime
+route intelligence a critical infrastructure.
+The Automatic Identification System (AIS) mandates that commercial vessels above
+300\,GT broadcast their position, speed, heading, and vessel category
+at intervals of a few seconds to several minutes.
+The US coastal coverage of the MarineCadastre dataset~\cite{noaa2024ais}
+logs approximately 170,000 vessels per day in the bounding box
+$[\text{lon}\ {-125^\circ},{-60^\circ}] \times [\text{lat}\ 10^\circ, 55^\circ]$,
+providing a rich empirical record of actual traffic patterns.
+
+Downstream consumers of route models include: route planners (planning fuel-efficient
+voyages), ETA estimators (forecasting port-arrival times), anomaly detectors
+(flagging routes that deviate from historical patterns), and digital-twin platforms
+such as~\citet{grigoropoulos2024scalable}, which require a synthetic route generator
+to stress-test event detectors.
+A survey of trajectory-prediction methods, from Kalman filters to recurrent networks
+to Transformer encoders, is given in~\citet{li2023trajectory}.
+
+\subsection{Problem statement}
+
+Formally, given
+\[
+  (\text{start} = (lon_0, lat_0),\quad
+   \text{end}   = (lon_T, lat_T),\quad
+   v \in \{0,\ldots,27\})
+\]
+the system must emit a sequence of 128 geographic waypoints
+\[
+  \mathbf{x} = (x_1,\ldots,x_{128}),\qquad
+  x_i = (lon_i, lat_i) \in \mathbb{R}^2,
+\]
+with $x_1 \approx \text{start}$, $x_{128} \approx \text{end}$,
+and $\mathbf{x}$ resembling a plausible commercial shipping route.
+Plausibility has three levels in decreasing strictness:
+(1)~\emph{geographic admissibility} --- the route lies on water;
+(2)~\emph{behavioural fidelity} --- the route follows patterns typical for vessel
+type~$v$;
+(3)~\emph{geometric quality} --- the route is smooth and has correct total length.
+
+\subsection{Why this is hard}
+
+Three properties of the problem made this project longer than expected,
+and understanding them is essential to follow the design choices in
+Section~\ref{sec:contributions}.
+
+\textbf{Irregular constraint surface.}
+Coastlines are GSHHS shoreline polygons~\cite{wessel1996gshhs} rasterised onto a
+grid; near-coast cells flip from ``land'' to ``water'' over $\sim$5\,km, and
+many narrow inlets are technically water but commercially unreachable.
+Any model that attempts to enforce water-validity via a smooth loss is fighting
+against a discontinuous constraint.
+
+\textbf{Multimodal route distribution.}
+A ship from Miami to Galveston can plausibly hug the Gulf coast, cut directly
+across the Gulf of Mexico, or avoid an offshore platform.
+AIS data records exactly one of these choices per voyage.
+A point-prediction model trained on this data will reproduce one mode---or worse,
+an average between two modes that is itself implausible---and the standard \ade{}
+metric measures distance to \emph{one} ground-truth, not coverage of the mode set.
+
+\textbf{One-hundred-fold length variance.}
+Straight-line distances in the dataset range from 20\,km to 2000\,km.
+Short routes are nearly straight and reward the great-circle baseline; long routes
+look like multi-leg voyages and reward retrieval-style memorisation.
+No single inductive bias serves both.
+
+\textbf{Noisy ground truth.}
+The original dataset, built without coastal filtering, had ground-truth tracks that
+crossed land 36\,\% of the time at a 10\,km SDF threshold and 87\,\% at a
+0\,km threshold---not a model bug, but a data issue arising from
+rasterisation noise and genuine coastal-river traffic.
+Cleaning the dataset (Section~\ref{sec:e1}) turned out to be the largest single-step
+improvement in the entire project.
+
+\subsection{Contribution overview}
+\label{sec:contribution-overview}
+
+This report documents twelve model iterations and proposes a thirteenth.
+The student's original contributions are:
+\begin{itemize}
+  \item The full data pipeline from NOAA AIS zips to 128-point route NPZ datasets
+        (including the E1 land-filtering step, Section~\ref{sec:e1}).
+  \item Twelve distinct model architectures/training procedures
+        (v1 through v12), each with training, evaluation, and post-mortem analysis.
+  \item The WaterRouter post-processor (Section~\ref{sec:water-router}): A*- and BFS-based
+        snapping on a fine-resolution water-cell graph.
+  \item The land signed-distance field infrastructure
+        (Section~\ref{sec:land-sdf}) used for differentiable training loss and hard projection.
+  \item The v13 TrajDiff engineering specification (Section~\ref{sec:future}).
+\end{itemize}
+
+Background material (Transformer architecture, DDPM, GSHHS, A* search)
+is cited throughout and clearly distinguished from original work.
+
+% =====================================================================
+\section{Background}
+\label{sec:background}
+
+\subsection{Transformer encoder and encoder-decoder}
+\label{sec:bg-transformer}
+
+The Transformer~\cite{vaswani2017attention} replaced recurrent networks as the
+standard sequence-modelling primitive.
+A \emph{Transformer encoder} is a stack of identical layers; each layer applies
+multi-head self-attention followed by a position-wise feed-forward network (FFN).
+Self-attention computes, for each token $i$, a weighted sum of all tokens' values:
+\[
+  \text{Attn}(Q,K,V) = \text{softmax}\!\left(\tfrac{QK^\top}{\sqrt{d_k}}\right)V,
+\]
+where $Q$, $K$, $V$ are query, key, and value projections.
+A causal (triangular) mask restricts each token to attend only to past tokens,
+enabling autoregressive generation.
+
+An \emph{encoder-decoder} Transformer pairs an encoder that produces a context
+\emph{memory} with a decoder that generates outputs token-by-token through
+cross-attention to that memory.
+This architecture underlies v2--v10 of this project.
+
+\subsection{Autoregressive generation and exposure bias}
+
+In autoregressive generation, the decoder produces position $t+1$ from all
+previously generated positions.
+During training with \emph{teacher forcing}, the decoder receives ground-truth
+positions as input.
+At inference, it receives its own predictions, creating a distribution mismatch
+(exposure bias) that compounds errors over long rollouts.
+\emph{Scheduled sampling}~\cite{bengio2015scheduled} mitigates this by
+probabilistically substituting self-predictions for ground-truth inputs during
+training.
+
+\subsection{Denoising diffusion models}
+\label{sec:bg-diffusion}
+
+Denoising Diffusion Probabilistic Models (DDPM)~\cite{ho2020denoising} define a
+\emph{forward process} that gradually adds Gaussian noise to a data sample $x_0$:
+\[
+  x_t = \sqrt{\bar\alpha_t}\, x_0 + \sqrt{1-\bar\alpha_t}\,\varepsilon,
+  \qquad \varepsilon \sim \mathcal{N}(0,I),
+\]
+where $\bar\alpha_t$ follows a cosine schedule over $T=1000$ steps.
+A neural network learns to predict $\varepsilon$ (the ``noise'') given $x_t$ and $t$.
+Denoising Diffusion Implicit Models (DDIM)~\cite{song2021ddim} accelerate sampling
+to 20--50 steps by reusing predicted-noise estimates across timesteps.
+Classifier-free guidance (CFG)~\cite{ho2022classifier} mixes conditional and
+unconditional noise predictions at inference:
+\[
+  \hat\varepsilon = \varepsilon_\text{uncond} + w\,(\varepsilon_\text{cond} -
+                   \varepsilon_\text{uncond}), \quad w > 1,
+\]
+steering the sample toward a conditioning signal.
+Diffusion Transformers (DiT)~\cite{peebles2023dit} replace U-Net backbones with
+Transformer blocks modulated by adaptive layer normalisation (adaLN-Zero).
+
+\subsection{Signed-distance fields}
+
+A signed-distance field (SDF) assigns to each point $p \in \mathbb{R}^2$ a scalar
+$\text{sdf}(p)$ whose absolute value is the shortest distance to a reference
+boundary $\partial S$, and whose sign indicates which side of the boundary $p$ is on.
+In this project, \textbf{positive} values indicate land (inside the GSHHS polygon $S$)
+and \textbf{negative} values indicate water.
+The SDF is precomputed once from the GSHHS shoreline~\cite{wessel1996gshhs} at
+$0.05^\circ$ resolution (Section~\ref{sec:land-sdf}).
+
+% =====================================================================
+\section{Dataset and Experimental Setup}
+\label{sec:setup}
+
+\subsection{Data source and filtering}
+
+The dataset is twelve months of US-region NOAA AIS broadcasts from 2024,
+covering vessel types 60--89 (passenger, cargo, tanker, and similar commercial
+classes) within the bounding box
+$\text{lon} \in [-125^\circ, -60^\circ]$,
+$\text{lat} \in [10^\circ, 55^\circ]$.
+Raw pings are filtered by \texttt{prepare\_data.py}: minimum track length 50 pings,
+maximum inter-ping jump 2\,km, maximum gap 60\,min,
+turn-segmentation at headings exceeding $150^\circ$, minimum average speed
+1\,km/h, minimum total distance 5\,km.
+Approximately 97\,\% of raw pings are removed (80\,\% by vessel-type filter alone).
+
+Tracks are resampled to exactly 128 points by uniform arc-length interpolation
+using \texttt{prepare\_trajgen.py}.
+This produces a dataset of 207,000 routes stored as
+\texttt{trajgen\_128.npz}; each entry is a $(128 \times 2)$ array of
+normalised (lon, lat) values paired with metadata (start, end, vessel type).
+A cleaned subset \texttt{trajgen\_128\_clean.npz} is described in Section~\ref{sec:e1}.
+
+\subsection{Evaluation protocol}
+
+All trajectory-generation experiments are evaluated on a fixed set of
+$n=500$ validation routes sampled with \texttt{seed=42}.
+The train/validation split is by \emph{root MMSI}: all AIS segments of the
+same physical vessel (identified by stripping batch prefix and segment suffix
+from the synthetic vessel ID) land entirely in train or entirely in validation,
+preventing data leakage.
+
+Two primary metrics are reported throughout:
+\begin{itemize}
+  \item \textbf{\ade{} (Average Displacement Error)}: mean Euclidean distance
+    in metres between predicted and ground-truth waypoints, averaged over all
+    128 steps and all 500 validation routes.
+  \item \textbf{\fde{} (Final Displacement Error)}: Euclidean distance in metres
+    between predicted and ground-truth \emph{final} waypoints.
+    Linear endpoint correction (Section~\ref{sec:endpoint-correction}) drives
+    \fde{} to near zero for all AR models.
+\end{itemize}
+
+Length-bucketed \ade{} further breaks down results into short ($<$50\,km),
+medium (50--500\,km), and long ($>$500\,km) route categories.
+
+Land-crossing metrics are:
+$\text{land\%@}d$ (fraction of predicted waypoints with $\text{sdf} > d$~km)
+and $\text{cross\%@}d$ (fraction of trajectories with at least one waypoint
+exceeding the threshold).
+
+\subsection{Hardware and software}
+
+Training runs were executed on heterogeneous hardware (CUDA GPU, Apple Silicon MPS,
+and CPU), handled by device auto-detection logic consistent across all model versions.
+All models are implemented in PyTorch.
+Inference latency for v10 + WaterRouter snap-only is approximately
+50\,ms per query on a single CPU core.
+
+\subsection{Baselines}
+
+\textbf{Great-circle (GC)}: 128 uniformly-spaced points along the geodesic arc
+between start and end.
+\ade{} = 8226\,m on \texttt{trajgen\_128.npz}; serves as the lower-effort
+geometric baseline throughout.
+
+\textbf{Retrieval-top-1}: returns the single most similar training route verbatim,
+selected by 5-D KNN over (start, end, vessel-type).
+\ade{} = 6470\,m on \texttt{trajgen\_128.npz} (seed=42 evaluation harness);
+a zero-training baseline showing the information value of historical traffic.
+
+% =====================================================================
+\section{Technical Contributions}
+\label{sec:contributions}
+
+\subsection{v1 -- Next-step displacement prediction}
+\label{sec:v1}
+
+\subsubsection{Architecture}
+
+The first model treated trajectory modelling as a next-step regression problem:
+given the past $L=120$ ping triples $(lon, lat, \Delta t)$, predict the
+displacement $(\Delta lon, \Delta lat)$ to the next ping.
+The implementation is a Transformer encoder with a causal (triangular) mask
+(\texttt{src/model.py}, class \texttt{AISTransformer}).
+Each timestep is encoded as a 5-dimensional vector:
+\[
+  x_i = [lon_i^\text{norm},\ lat_i^\text{norm},\ \log(\Delta t_i)^\text{norm},
+          \ \Delta lon_i^\text{norm},\ \Delta lat_i^\text{norm}]
+\]
+plus a learned 8-dimensional vessel-type embedding added at every step.
+Displacement is chosen as the regression target rather than absolute position
+because it has small, zero-centred variance independent of geographic location,
+keeping the per-coordinate target distribution stable across the dataset.
+Three independent scalers (position, log-$\Delta t$, displacement) are fitted on
+the training partition only.
+
+The \emph{bidirectional variant} (mean pooling of encoder outputs) was also
+implemented and immediately caught: it achieved much lower training MSE by
+attending to future positions, producing perfect training curves but failing
+at inference.  \textbf{Never use bidirectional attention for causal prediction};
+this finding is recorded as an architectural warning in the project documentation.
+
+\subsubsection{Result}
+
+\begin{table}[ht]
+\centering
+\caption{v1 next-step model vs.\ constant-velocity (CV) baseline.
+         ADE in metres; lower is better.}
+\label{tab:v1}
+\begin{tabular}{lrr}
+\toprule
+Run & CV \ade{} & Model \ade{} \\
+\midrule
+12-month full dataset    & 50.7 & 50.8 \\
+Open-sea filtered        & 47.0 & 47.5 \\
+Open-sea + lighthouse    & 47.0 & 48.6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The model matches but never beats the constant-velocity (CV) baseline
+(Table~\ref{tab:v1}).
+A multi-step rollout evaluation confirmed divergence faster than CV at
+horizons 5, 10, and 20.
+Adding lighthouse-distance features made results strictly worse.
+
+\subsubsection{Lesson}
+
+Open-sea AIS tracks are nearly linear at 3-minute pings: the CV predictor is
+near-optimal on post-turn-segmented data.
+More broadly, \textbf{per-step accuracy in normalised MSE is not predictive of
+trajectory-level error}.
+This finding recurs repeatedly through v2--v12 and is the single most important
+cross-cutting lesson of the project.
+
+\subsection{v2--v5 -- Encoder-decoder trajectory generator}
+\label{sec:v2v5}
+
+\subsubsection{Reframing as seq2seq}
+
+The pivot from v1 to v2 reframed the task as a \emph{sequence-to-sequence}
+generation problem: given (start, end, vessel\_type), generate a full 128-point
+route.
+The dataset was rebuilt by \texttt{prepare\_trajgen.py}, which resamples each
+track to exactly 128 arc-length-uniform waypoints and discards time-delta
+information (vessel speed is recovered implicitly through the vessel-type embedding).
+
+\subsubsection{Architecture (\texttt{src/model\_gen.py})}
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=0.8cm and 1.5cm,
+    box/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.65cm,
+                align=center, font=\small},
+    arr/.style={-{Latex[scale=0.9]}, thick},
+  ]
+  % Encoder tokens
+  \node[box, fill=blue!10]  (start) {Start token};
+  \node[box, fill=blue!10, below=0.4cm of start] (end) {End token};
+  \node[box, fill=blue!10, below=0.4cm of end]   (vtype) {Vessel type};
+  % Encoder
+  \node[box, fill=blue!20, right=1.5cm of end, minimum width=2.4cm,
+        minimum height=2.4cm, align=center] (enc) {Transformer\\Encoder\\(2 layers)};
+  % Memory
+  \node[box, fill=blue!30, right=1.5cm of enc] (mem) {Memory\\(3, $d$)};
+  % Decoder
+  \node[box, fill=green!15, right=1.5cm of mem, minimum height=2.4cm,
+        minimum width=2.4cm] (dec) {Transformer\\Decoder\\(4 layers)\\causal mask};
+  % Output
+  \node[box, fill=green!30, right=1.2cm of dec] (out) {$\hat\delta_i$\\$(\Delta lon,\Delta lat)$};
+  % Input to decoder
+  \node[box, fill=gray!10, below=0.8cm of dec] (inp) {$(lon_i, lat_i,$\\$prog_i, \sin\theta,\cos\theta)$};
+
+  \draw[arr] (start.east) -- ++(0.5,0) |- (enc.west);
+  \draw[arr] (end.east)   -- (enc.west);
+  \draw[arr] (vtype.east) -- ++(0.5,0) |- (enc.west);
+  \draw[arr] (enc.east)   -- (mem.west);
+  \draw[arr] (mem.east)   -- (dec.west) node[midway,above,font=\tiny]{cross-attn};
+  \draw[arr] (inp.north)  -- (dec.south);
+  \draw[arr] (dec.east)   -- (out.west);
+\end{tikzpicture}
+\caption{v4/v5 encoder-decoder architecture. The encoder produces 3 context tokens
+         from start, end, and vessel-type conditioning.  The decoder generates the
+         128-point route autoregressively via causal self-attention and cross-attention
+         to the encoder memory. Input features include bearing-to-destination
+         $(\sin\theta, \cos\theta)$ added in v4.}
+\label{fig:v4-arch}
+\end{figure}
+
+\textbf{Encoder.}  Three conditioning tokens (start, end, vessel-type), each
+projected through a linear layer to $d_\text{model}$, plus learned token-type
+embeddings to distinguish their roles.
+Output: memory $\in \mathbb{R}^{3 \times B \times d_\text{model}}$.
+
+\textbf{Decoder.}  Consumes a per-step input and generates 128 waypoints
+autoregressively.
+Each step's input (3-dim for MVP/v2/v3; 5-dim for v4/v5 with bearing) is projected
+to $d_\text{model}$, summed with sinusoidal positional encoding, and passed through
+four Transformer decoder layers (causal self-attention + cross-attention to encoder memory).
+A linear head emits predicted displacement $(\Delta lon, \Delta lat)$;
+the next position is recovered as:
+\[
+  \text{pos}_{i+1} = \text{pos}_i + \delta_\text{scaler}^{-1}(\hat\delta_i).
+\]
+
+\textbf{Loss.}
+\begin{equation}
+  \mathcal{L} = \mathcal{L}_\delta + \lambda_\text{end}\,\mathcal{L}_\text{endpoint}
+              + \lambda_\text{smooth}\,\mathcal{L}_\text{smooth},
+  \label{eq:gen-loss}
+\end{equation}
+where $\mathcal{L}_\delta$ is Huber loss on predicted vs.\ ground-truth deltas,
+$\mathcal{L}_\text{endpoint} = \|\text{pos}^T_\text{pred} - \text{pos}^T_\text{gt}\|^2$,
+and $\mathcal{L}_\text{smooth} = \frac{1}{T-2}\sum_i\|\text{accel}_i\|^2$ penalises
+second-order acceleration.
+MVP configuration: $\lambda_\text{end}=10$, $\lambda_\text{smooth}=1.0$.
+
+\subsubsection{Linear endpoint correction}
+\label{sec:endpoint-correction}
+
+After autoregressive rollout, the residual endpoint error
+$r = \text{pos}^T_\text{gt} - \text{pos}^T_\text{pred}$ is distributed linearly
+across all 128 waypoints:
+\[
+  \text{pos}_i^\text{corrected} = \text{pos}_i^\text{raw} + r \cdot \frac{i}{T-1},
+  \quad i = 1,\ldots,128.
+\]
+This drives \fde{} to near zero without retraining and is retained in every
+subsequent model.
+
+\begin{algorithm}[ht]
+\caption{Linear Endpoint Correction}
+\label{alg:endpoint}
+\begin{algorithmic}[1]
+\REQUIRE raw trajectory $\mathbf{x}^{\text{raw}}$, ground-truth endpoint $\text{pos}^T_\text{gt}$
+\STATE $r \gets \text{pos}^T_\text{gt} - x^{\text{raw}}_{128}$
+\FOR{$i = 1$ \textbf{to} $128$}
+    \STATE $x_i^{\text{corrected}} \gets x_i^{\text{raw}} + r \cdot (i-1)/(128-1)$
+\ENDFOR
+\STATE \RETURN $\mathbf{x}^{\text{corrected}}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Scheduled sampling (v3, v5)}
+
+To mitigate exposure bias, v3 and v5 use \emph{scheduled sampling}~\cite{bengio2015scheduled}.
+The naive step-by-step replacement caused GPU OOM at $T=128$ due to sequential
+forward passes.
+The implementation uses a \emph{two-pass parallel} scheme:
+Pass 1 runs the standard parallel teacher-forced decoder under
+\texttt{torch.no\_grad()} to obtain one-step-ahead predictions;
+a mixed input trajectory is constructed by selecting ground-truth or self-prediction
+per step with probability $p_\text{ss}$;
+Pass 2 re-runs the decoder with gradients on the mixed input.
+Cost: $\approx 2\times$ standard teacher forcing vs.\ $\sim128\times$ for the naive loop.
+
+\subsubsection{Architectural ladder results}
+
+\begin{table}[ht]
+\centering
+\caption{v2--v5 architectural ladder.
+         val\_delta is per-step loss in normalised delta space; ADE is evaluated by
+         autoregressive rollout over 500 validation routes (seed=42).
+         The architectural ladder produced no real-world ADE improvement.}
+\label{tab:v2v5}
+\begin{tabular}{llcccr}
+\toprule
+Config & Changes vs.\ MVP & $d_\text{model}$ & Enc.\ layers & val\_delta & \ade{} (m) \\
+\midrule
+MVP    & Baseline          & 128 & 0 & 0.086 & 6807 \\
+v2     & $\lambda_\text{end}=50$   & 128 & 0 & 0.105 & --- \\
+v3     & v2 + SS           & 128 & 0 & 0.105 & --- \\
+v4     & $d\!=\!256$, bearing feat., 2 enc.\ layers & 256 & 2 & 0.072 & --- \\
+v5     & v4 + SS           & 256 & 2 & 0.074 & 6753 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Figure~\ref{fig:ade-by-model} and Table~\ref{tab:v2v5} document the central negative finding:
+a 14\,\% improvement in val\_delta (0.086 $\to$ 0.074) corresponds to a $\sim$1\,\%
+improvement in \ade{} (6807 $\to$ 6753~m) that vanishes inside evaluation noise.
+The entire architectural ladder produced no measurable real-world improvement.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/ade_by_model.png}
+\caption{ADE across model iterations.
+         Blue bars: ADE-only models on \texttt{trajgen\_128.npz} (dirty data).
+         Green bars: water-strict variants.
+         Dashed red line: great-circle baseline.
+         Note the logarithmic scale on the right portion of the x-axis for v12.}
+\label{fig:ade-by-model}
+\end{figure}
+
+\subsection{v6, v7, v8 -- Obstacle-conditioned generation (parked)}
+\label{sec:v6v7}
+
+\subsubsection{Motivation and architecture}
+
+v6/v7 extended the v4/v5 encoder with $K\le3$ obstacle tokens, each encoding
+(centre\_lon, centre\_lat, radius\_deg) projected to $d_\text{model}$.
+The training loss added a fourth term:
+\begin{equation}
+  \mathcal{L}_\text{obs} = \frac{1}{T}\sum_i
+    \max\!\left(0,\; r + m - \|x_i - c\|\right)^2,
+  \label{eq:obstacle-loss}
+\end{equation}
+a one-sided quadratic penalty firing when predicted waypoint $x_i$ penetrates
+obstacle circle (centre $c$, radius $r$, margin $m$).
+The intent was obstacle-avoidance: given exclusion zones, the decoder should route
+around them.
+
+\subsubsection{v6 --- the data leak}
+
+\texttt{ObstacleTrajectoryGenDataset.\_\_getitem\_\_} seeded its RNG with
+\texttt{self.seed + idx}, assigning the \emph{same} obstacle placement to every
+sample at every epoch.
+The model memorised (trajectory, obstacle) pairs; the ground-truth route never
+crossed those obstacles; $\mathcal{L}_\text{obs} \equiv 0$ throughout training.
+The training log showed \texttt{val\_obstacle}~$\approx 3\times10^{-5}$---not
+``avoidance working'', but ``the penalty had nothing to penalise''.
+Evaluation returned an avoidance rate of 0.0\,\%.
+
+\subsubsection{v7 --- the structural failure}
+
+Fixing the data leak (\texttt{deterministic=False} in the dataset) revealed a
+deeper problem: the obstacle augmenter placed obstacles \emph{laterally offset} from
+the ground-truth route, not on it.
+The GT route therefore never approached the obstacle;
+$\mathcal{L}_\text{obs} = 0$ on any decoder output close to GT.
+The decoder cross-attended to the obstacle tokens but they carried no predictive
+signal; spurious epoch-specific correlations drove val\_loss from 0.72 (epoch~5)
+to 14.29 (epoch~17).
+
+\textbf{Structural diagnosis.}
+A constraint loss can only produce a gradient on training examples where the
+constraint is potentially \emph{violated}.
+Reviving obstacle-avoidance requires synthesising true detour trajectories
+(e.g., bent great-circle routes, RRT-planned detours) as ground-truth targets---a
+substantial dataset-engineering project not attempted in this work.
+
+\subsection{v9 -- Retrieval-augmented generation}
+\label{sec:v9}
+
+\subsubsection{Retrieval-top-1 gate}
+
+Before training v9, a zero-parameter experiment was run:
+for each validation query, return the nearest training route verbatim (retrieval-top-1),
+where nearness is defined by 5-D KNN over
+(start\_lon, start\_lat, end\_lon, end\_lat, vessel\_type).
+Result: \ade{} = 5489\,m\footnote{This measurement was made on a slightly
+different evaluation slice from the full seed=42 harness; the corresponding
+seed=42 figure is 6470\,m.  Both are included in \texttt{results/summary.csv}.},
+a 19\,\% improvement over the best trained model (v5 at 6753\,m).
+This zero-training baseline validated the retrieval substrate before any parameters
+were learned.
+
+\subsubsection{Architecture (\texttt{src/model\_gen\_retrieval.py})}
+
+v9 extends the v4 encoder with $K=5$ retrieved historical routes.
+A \texttt{MeanPoolRouteEncoder} compresses each retrieved $(128\times2)$ route to a
+single $d_\text{model}$-dimensional vector by mean-pooling the 128 position vectors
+and projecting.
+Encoder memory grows from 3 base tokens to $3 + 5 = 8$ tokens.
+The decoder cross-attends to all 8.
+
+\subsubsection{Results}
+
+\begin{table}[ht]
+\centering
+\caption{v9 results (epoch~38/60, \texttt{trajgen\_128.npz}, $n=500$, seed=42).}
+\label{tab:v9}
+\begin{tabular}{lrrc}
+\toprule
+Method & \ade{} (m) & \fde{} (m) & norm.\ \ade{} \\
+\midrule
+\textbf{v9 ep38}           & \textbf{6207} & \textbf{0}  & \textbf{0.0635} \\
+Retrieval-top-1            & 6470          & 5603        & 0.0819 \\
+Great-circle               & 8226          & 0.1         & 0.0704 \\
+v5 ep60                    & 6753          & 0           & ---    \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Length-bucketed \ade{} for v9 (dirty data, $n=500$, seed=42).
+         v9 wins short and medium routes; retrieval-top-1 dominates long routes
+         due to mean-pool collapse.}
+\label{tab:v9-buckets}
+\begin{tabular}{lrrrr}
+\toprule
+Bucket & $n$ & v9 (m) & Retr-top-1 (m) & GC (m) \\
+\midrule
+Short ($<$50\,km)     & 243 & \textbf{2117}  & 3366  & 2264  \\
+Medium (50--500\,km) & 250 & \textbf{9050} & 9143 & 11598 \\
+Long ($>$500\,km)     &   7 & 46631         & \textbf{18785} & 94774 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+v9 achieves the project's lowest overall \ade{} (6207\,m).
+However, on the 7 long-route validation examples, retrieval-top-1 beats v9 by
+$2.5\times$ (18785 vs.\ 46631~m).
+The \textbf{diagnosis}: mean-pooling each retrieved route to a single centroid-like
+$d_\text{model}$ vector destroys per-step shape information; on long routes,
+the shape of historical traffic \emph{is} the signal.
+
+\subsection{v10 -- Per-timestep retrieval and land-aware training}
+\label{sec:v10}
+
+v10 makes three targeted changes to v9, implemented in
+\texttt{src/model\_gen\_v10.py}.
+
+\subsubsection{Change 1: Per-step retrieval bank}
+
+\texttt{MeanPoolRouteEncoder} is replaced with \texttt{PerStepRouteEncoder}.
+Each retrieved route is subsampled from $T=128$ to $t_\text{retr}=32$ points by
+uniform index linspace, projected per-point through a linear layer to
+$d_\text{model}$, and augmented with two learned embeddings: a
+\emph{route-index embedding} (distinguishing retrieved routes 1--5) and a
+\emph{step-index embedding} (distinguishing steps 0--31).
+Encoder memory grows from 8 tokens (v9) to $3 + 5 \times 32 = \mathbf{163}$ tokens.
+The decoder can now cross-attend to ``neighbour~$k$ at step~$t$'' directly, preserving
+per-step route shape.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=0.6cm and 1.4cm,
+    box/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.7cm,
+                align=center, font=\small},
+    arr/.style={-{Latex[scale=0.9]}, thick},
+  ]
+  \node[box, fill=blue!10]  (base) {3 base tokens\\(start, end, vtype)};
+  \node[box, fill=orange!15, below=0.4cm of base, minimum width=2.2cm,
+        minimum height=1.4cm]
+    (retr) {5 routes $\times$ 32 steps\\= 160 retrieval tokens\\route\_idx + step\_idx emb};
+  \node[draw, dashed, fit=(base)(retr), inner sep=4pt, label=above:{\small Encoder}]
+    (encbox) {};
+  \node[box, fill=blue!30, right=1.5cm of encbox, yshift=0.3cm]
+    (mem) {Memory\\163 tokens};
+  \node[box, fill=green!15, right=1.5cm of mem, minimum height=2.4cm,
+        minimum width=2.4cm] (dec) {Decoder\\windowed\\causal mask\\$k_\text{past}=32$};
+  \node[box, fill=green!30, right=1.2cm of dec] (out) {$\hat\delta_i$};
+
+  \draw[arr] (encbox.east) -- (mem.west);
+  \draw[arr] (mem.east) -- (dec.west) node[midway,above,font=\tiny]{cross-attn};
+  \draw[arr] (dec.east) -- (out.west);
+\end{tikzpicture}
+\caption{v10 encoder-decoder.  The 163-token memory bank exposes per-step shape from
+         each of the 5 retrieved routes, replacing v9's mean-pool collapse.
+         The windowed causal mask (k\_past\,=\,32) limits self-attention drift over
+         the 128-step rollout.}
+\label{fig:v10-arch}
+\end{figure}
+
+\subsubsection{Change 2: Windowed causal mask}
+
+A windowed causal mask blocks attention to steps further than $k_\text{past}=32$
+in the decoder's own past:
+\[
+  M_{ij} = \begin{cases}
+    0      & \text{if } j \le i \text{ and } j \ge i - k_\text{past} \\
+    -\infty & \text{otherwise.}
+  \end{cases}
+\]
+This limits drift from stale self-state over 128 autoregressive steps.
+
+\subsubsection{Change 3: Land-aware loss and hard-projection inference}
+\label{sec:land-sdf}
+
+A differentiable land loss is added to Eq.~\eqref{eq:gen-loss}:
+\begin{equation}
+  \mathcal{L}_\text{land} = \frac{1}{T}\sum_i \text{ReLU}\!\left(\text{sdf\_km}(x_i^\text{raw}) - 10\right)^2,
+  \label{eq:land-loss}
+\end{equation}
+where $\text{sdf\_km}$ is sampled bilinearly from the precomputed $0.05^\circ$ SDF
+raster (Figure~\ref{fig:land-sdf}).
+The threshold 10\,km discounts rasterisation noise: the GT data in
+\texttt{trajgen\_128.npz} itself has 10.83\,\% land fraction at 10\,km,
+purely from GSHHS polygon clipping artefacts.
+The coefficient $\lambda_\text{land} = 0.01$ was chosen to keep the land gradient
+comparable to $\mathcal{L}_\delta$ without destabilising early training.
+
+The full v10 loss is:
+\[
+  \mathcal{L}_{v10} = \mathcal{L}_\delta
+                    + 10\,\mathcal{L}_\text{endpoint}
+                    + 1\,\mathcal{L}_\text{smooth}
+                    + 0.01\,\mathcal{L}_\text{land}.
+\]
+
+\textbf{Differentiable SDF sampling.}
+PyTorch's \texttt{F.grid\_sample} backward is unimplemented on Apple Silicon MPS.
+A platform-independent bilinear sampler was therefore hand-rolled in
+\texttt{src/land\_mask.py}:
+integer cell indices are detached (no gradient); floating-point offsets
+$(f_r, f_c)$ carry the gradient through a manual bilinear combination:
+\[
+  v \approx (1-f_r)(1-f_c)\,v[r,c]
+           + (1-f_r) f_c\,v[r,c{+}1]
+           + f_r(1-f_c)\,v[r{+}1,c]
+           + f_r f_c\,v[r{+}1,c{+}1].
+\]
+
+\textbf{Hard-projection at inference.}
+After each decoder step, if $\text{sdf\_km}(\text{pos}) > 10$, the position is
+projected to the nearest water cell via breadth-first search (BFS) in
+\texttt{LandMask.project\_to\_water} (20-cell search radius $\approx$ 100\,km).
+The projected point is fed back into the decoder for the next step.
+After rollout, linear endpoint correction is applied; corrected points with
+$\text{sdf} > 10$ are re-projected.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.85\linewidth]{figures/land_sdf.png}
+\caption{Land SDF raster at $0.05^\circ$ ($\approx5\,km$) resolution over
+         the US coverage bbox.
+         Blue = water (negative SDF), red = land (positive SDF).
+         Saturated at $\pm100\,km$ for visual clarity.}
+\label{fig:land-sdf}
+\end{figure}
+
+\subsubsection{Results on dirty data}
+
+\begin{table}[ht]
+\centering
+\caption{v10 variants on dirty \texttt{trajgen\_128.npz} ($n=500$, seed=42).}
+\label{tab:v10-dirty}
+\begin{tabular}{lrrc}
+\toprule
+Configuration & \ade{} (m) & land\%@10km & cross\%@0km \\
+\midrule
+v10 raw                     & 6584  & 7.15 & 36.2 \\
+v10 + hard-projection       & 9345  & 0.02 & 0.4  \\
+v10 + WaterRouter snap-only & 7934  & 0.09 & 1.2  \\
+Retrieval-top-1             & 6470  & 11.03 & 35.6 \\
+Great-circle                & 8226  & 13.47 & 41.8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Hard-projection drove land-crossing to near zero but incurred $+42$\,\% \ade{}.
+The WaterRouter snap-only post-processor (Section~\ref{sec:water-router}) reduced this
+penalty to $+20$\,\%; the root cause of both penalties---ground-truth data quality---
+is addressed in Section~\ref{sec:e1}.
+
+\subsection{WaterRouter post-processor}
+\label{sec:water-router}
+
+The WaterRouter (\texttt{src/water\_router.py}) is a non-learned post-processor
+that snaps v10 raw waypoints to water without retraining.
+
+\textbf{Fine-resolution graph.}
+\texttt{scripts/data/build\_water\_graph.py} builds a $0.005^\circ$ ($\approx0.5\,km$)
+graph from the same GSHHS polygons.
+Each water cell carries a \texttt{neighbor\_bits} mask encoding which of its
+8 neighbours are also water.
+File size: $\approx$117\,MB for the US bbox.
+
+\textbf{Snap-only mode (production).}
+For each waypoint with $\text{sdf} > 10$:
+find the nearest fine-grid water cell satisfying (a) $\text{neighbor\_bits} > 0$
+(not a landlocked inlet artefact) and (b) coarse-SDF below threshold.
+Condition (a) prevents snapping to isolated one-pixel water artefacts with no
+path to the open ocean.
+
+\begin{algorithm}[ht]
+\caption{WaterRouter Snap-Only}
+\label{alg:snap}
+\begin{algorithmic}[1]
+\REQUIRE trajectory $\mathbf{x}$ (128 waypoints), coarse SDF, fine-grid water graph
+\FOR{$i = 1$ \textbf{to} $128$}
+  \IF{$\text{sdf\_coarse}(x_i) > 10$}
+    \STATE $c \gets$ fine-grid cell nearest to $x_i$
+    \STATE BFS from $c$: find nearest $c'$ with $\text{neighbor\_bits}(c') > 0$
+            AND $\text{sdf\_coarse}(c') \le 10$
+    \STATE $x_i \gets \text{centre}(c')$
+  \ENDIF
+\ENDFOR
+\STATE \RETURN $\mathbf{x}$
+\end{algorithmic}
+\end{algorithm}
+
+Latency: $\approx22\,ms$ per trajectory on a single CPU core.
+The bridging mode (\texttt{do\_segment\_bridge=True}), which uses A* search to
+re-route segments crossing land, was found to hurt \ade{} more than it fixed
+residual crossings and is disabled in production.
+
+\subsection{E1 -- Upstream data cleaning}
+\label{sec:e1}
+
+\subsubsection{Diagnosis}
+
+Running \texttt{scripts/eval/land\_crossing\_diagnostic.py} on the \emph{ground truth}
+trajectories in \texttt{trajgen\_128.npz} returned:
+$\text{land\%@10km} = 10.83$\,\%,
+$\text{cross\%@10km} = 36.0$\,\%,
+$\text{cross\%@0km} = 87.6$\,\%.
+The data itself was crossing land; the model trained on it was being asked to learn
+``do not cross land'' while 36\,\% of its supervisory targets did exactly that.
+
+\subsubsection{The filter}
+
+\texttt{scripts/data/filter\_trajgen\_npz.py} retains only tracks satisfying:
+\[
+  \text{land5\_frac} \le 0.02
+  \quad\text{AND}\quad
+  \max_i \text{sdf\_km}(x_i) \le 10,
+\]
+where \texttt{land5\_frac} is the fraction of waypoints with $\text{sdf} > 5$~km.
+The output, \texttt{trajgen\_128\_clean.npz}, contains 61,024 of the original
+207,000 tracks (29.4\,\%).
+
+\subsubsection{Impact}
+
+\begin{table}[ht]
+\centering
+\caption{v10 ep52 weights re-evaluated on clean vs.\ dirty data.}
+\label{tab:e1}
+\begin{tabular}{lrrr}
+\toprule
+Metric & Dirty data & Clean data & Change \\
+\midrule
+GT land\%@10km       & 10.83 & \textbf{0.00}  & $-100$\,\% \\
+v10 raw \ade{} (m)   & 6584  & \textbf{6278}  & $-4.6$\,\% \\
+v10 + hard-proj \ade{} & 9345 & \textbf{6579} & $-30$\,\% \\
+v10 + WaterRouter \ade{} & 7934 & \textbf{6282} & $-21$\,\% \\
+v10 + WaterRouter cross\%@10km & 1.2 & \textbf{0.0} & $-100$\,\% \\
+Retr-top-1 \ade{}    & 6470  & 12373           & $+91$\,\%  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The water-strict \ade{} penalty from snap-only essentially vanished on clean data
+(6282~m vs.\ 6278~m v10 raw on the same slice) because almost no waypoints needed
+snapping.
+The retrieval-top-1 regression on clean data is expected: the corpus shrank by 70\,\%
+and long-bucket sample count grew from 7 to 23, making KNN matches sparser.
+
+\textbf{The lesson}: the largest single improvement in production \ade{} across
+the entire project came from 200 lines of data-filtering code, not from any
+architectural innovation.
+
+\subsection{v11 -- Halton-cone pointer (parked)}
+\label{sec:v11}
+
+v11 replaced continuous displacement regression with a discrete pointer over
+a per-step candidate pool of water-only positions.
+Candidates were drawn by Halton quasi-random sampling~\cite{halton1960quasi}
+within a $[3\,km, 25\,km]$ forward cone aligned with bearing-to-destination.
+The model selected the best candidate via a masked softmax pointer head
+(\texttt{src/model\_gen\_v11.py}).
+
+\textbf{Result}: \ade{} = 30000\,m, path-length ratio $13\times$.
+\textbf{Diagnosis}: the median GT step after arc-length resampling to 128 points is
+0.34\,km; the cone minimum radius (3\,km) was $9\times$ larger.
+The model could only pick the smallest available candidate at every step---and even
+that overshot by almost an order of magnitude.
+\textbf{Lesson}: a candidate pool must be calibrated to the empirical step-size
+distribution of the training data, not to intuitions about ``reasonable'' step sizes.
+v11 is parked.
+
+\subsection{v12 -- Water-cell K-ring pointer (abandoned)}
+\label{sec:v12}
+
+v12 (\texttt{src/model\_gen\_v12.py}) addressed the v11 mismatch by deriving the
+candidate pool from the actual water-cell graph.
+At each decoder step, candidates are the Chebyshev-$K$ ring of cells around the
+current cell plus a learned END token; land cells receive $-\infty$ logit before
+softmax, giving a \emph{structural} water guarantee: the model cannot output a
+land cell.
+A small offset head regresses a continuous $({\Delta}lon, {\Delta}lat)$ within the
+chosen cell for sub-km precision.
+
+\begin{table}[ht]
+\centering
+\caption{v12 failure (40-epoch run, $K=4$, $n=500$, seed=42).}
+\label{tab:v12}
+\begin{tabular}{lrrrr}
+\toprule
+ & v9 ep38 & Retr-top-1 & GC & v12 (ep40) \\
+\midrule
+\ade{} (m)             & 6207  & 6741  & 8539  & \textbf{27365} \\
+\fde{} (m)             & 0     & 6160  & 0.1   & 41038 \\
+\ade{} long (m)        & 46631 & 22845 & 95900 & 236014 \\
+strict-0 cross\%       & ---   & ---   & ---   & 81\,\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Three structural failures:}
+\begin{enumerate}
+  \item \textbf{K\,=\,4 silently drops long transitions.}
+        P90/P95/P99 of GT cell transitions at $0.005^\circ$ are 4/5/10 cells.
+        Any transition with $|dx|>4$ or $|dy|>4$ maps to
+        \texttt{ignore\_index=-100} in cross-entropy, contributing zero gradient.
+        The model never learns long jumps; at inference it is forced through
+        short ring-steps, producing wandering routes
+        (path-length ratio 1.48).
+  \item \textbf{CE on cell pointer is uncorrelated with rollout ADE.}
+        Top-1 cell accuracy reached 87.2\,\% over 40 epochs while \ade{}
+        remained catastrophic.
+        $\lambda_\text{ade}=0.001$ contributed
+        $\sim 3.6 \times 10^{-5}$ to total loss vs.\ CE contributing $\sim 0.545$
+        ($50{-}100\times$ dominant).
+        \emph{Auxiliary losses must be calibrated by gradient magnitude, not intuition.}
+  \item \textbf{Argmax rollout drifts laterally.}
+        Greedy argmax selection over 128 steps accumulates lateral offset that
+        linear endpoint correction cannot undo.
+\end{enumerate}
+
+v12 is abandoned; the post-mortem lives in \texttt{docs/decisions.md\#v12}.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/v9_v10_v12_training_curves.png}
+\caption{Training and validation loss for v9 (retrieval), v10 (production), and v12
+         (abandoned) on log scale.
+         Note that v12's CE loss is on a fundamentally different scale and not
+         comparable to v9/v10's regression loss.}
+\label{fig:training-curves}
+\end{figure}
+
+% =====================================================================
+\section{Results and Discussion}
+\label{sec:results}
+
+\subsection{Summary of all trajectory-generation experiments}
+
+Figure~\ref{fig:ade-by-model} provides a visual overview of \ade{} across all
+trajectory-generation model versions.
+Figure~\ref{fig:fde-by-model} shows \fde{}, illustrating the dramatic effect of linear
+endpoint correction (\ade{} target models reach \fde{}$\approx 0$;
+retrieval-top-1 without correction has \fde{} $= 5603\,m$).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/fde_by_model.png}
+\caption{FDE across model versions.
+         Models with linear endpoint correction (blue) land near \fde{}$=0$.
+         Retrieval-top-1 (yellow) has high \fde{} because no correction is applied
+         to returned historical routes.
+         v10\,+\,WaterRouter FDE is non-zero because snapping can shift the final
+         waypoint.}
+\label{fig:fde-by-model}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/length_bucketed_ade.png}
+\caption{Length-bucketed ADE (log scale).
+         v9 wins short and medium; retrieval-top-1 dominates the long-tail ($>$500\,km).
+         No single model wins all three buckets --- the key motivation for v13's
+         length router.}
+\label{fig:length-bucketed}
+\end{figure}
+
+\subsection{Cross-cutting findings}
+
+\begin{enumerate}
+
+\item \textbf{Per-step validation loss is uncorrelated with rollout ADE.}
+      The architectural ladder v2$\to$v5 improved val\_delta by 14\,\% (0.086 $\to$ 0.074)
+      with zero real-world ADE improvement.
+      The same pattern appeared in v12: CE top-1 accuracy reached 87.2\,\% while
+      \ade{} was 4.4$\times$ v9.
+      Only end-to-end rollout evaluation is informative.
+
+\item \textbf{Retrieval is the only architectural innovation that moved the needle.}
+      The retrieval-top-1 baseline (zero parameters) beat the best trained AR model
+      (v5) by 19\,\% on \ade{}.
+      v9's trained model improved on retrieval-top-1 by 4\,\% overall.
+      All other architectural elaborations (bigger model, bearing features, scheduled
+      sampling, land loss, windowed mask) produced no significant overall \ade{} gain.
+
+\item \textbf{Data quality dominates model quality.}
+      Filtering the training set (E1, Section~\ref{sec:e1}) reduced the water-strict
+      \ade{} by 21\,\% --- larger than any model change.
+      The land-crossing penalty from hard-projection collapsed from $+42$\,\% to
+      $+5$\,\% after cleaning.
+
+\item \textbf{Constraint losses need constraint-violating examples.}
+      Both the obstacle loss (v6/v7) and the land loss (v10) require training
+      examples where the constraint \emph{would} be violated to generate
+      a non-zero gradient.
+      The obstacle loss never fired structurally; the land loss fired inconsistently
+      on dirty data (threshold too close to GT's own land rate).
+
+\item \textbf{Structural guarantees are decoupled from trajectory quality.}
+      v12's masked-logit pointer guaranteed $\text{cross\%@0} = 81$\,\% --- better
+      than its own ground truth (87\,\%) --- while producing \ade{} 4.4$\times$
+      worse than v9.
+      Water-validity and route accuracy are distinct objectives requiring separate
+      engineering.
+
+\end{enumerate}
+
+\subsection{Production system use-case ranking}
+
+\begin{table}[ht]
+\centering
+\caption{Use-case ranking for the production system.}
+\label{tab:ranking}
+\begin{tabular}{llrr}
+\toprule
+Use case & Configuration & \ade{} (m) & land\%@10km \\
+\midrule
+Water-strict deployment  & v10+router, clean data    & \textbf{6282} & \textbf{0.00} \\
+Best \ade{}, no constraint & v9 ep38, dirty data     & \textbf{6207} & 12.81 \\
+Best long-route ($>$500\,km) & Retr-top-1, dirty & 18785\textsuperscript{*} & 11.03 \\
+Geometric baseline       & Great-circle              & 8226          & 13.47 \\
+\bottomrule
+\end{tabular}
+\vspace{0.5em}
+\small\textsuperscript{*}Long bucket only ($n=7$); overall retr-top-1 ADE is 6470\,m.
+\end{table}
+
+The production system has no single model that simultaneously achieves lowest
+overall \ade{}, lowest long-bucket \ade{}, and strict water-validity.
+This three-way trade-off is the primary motivation for the v13 design in
+Section~\ref{sec:future}.
+
+% =====================================================================
+\section{Summary and Conclusion}
+\label{sec:conclusion}
+
+\subsection{What was achieved}
+
+Starting from a next-step displacement predictor that could not beat a
+constant-velocity baseline, this project arrived at:
+
+\begin{itemize}
+  \item A production route generator (v10 + WaterRouter) achieving
+        \ade{} = 6282\,m with 0\,\% land-crossing at the 10\,km threshold,
+        running at $\sim$50\,ms per query on a CPU.
+  \item A full data pipeline from raw NOAA AIS downloads to evaluation-ready NPZ datasets,
+        including E1 land filtering and KNN-cache construction.
+  \item Reusable infrastructure: a differentiable land SDF, a fine-resolution
+        water-cell graph and A*/BFS router, and a retrieval substrate that can be
+        reused by any future model.
+  \item Detailed post-mortems for six failed or parked model variants, providing
+        actionable design guidance for future work.
+\end{itemize}
+
+\subsection{Open challenges}
+
+Three structural problems remain unsolved:
+
+\begin{enumerate}
+\item \textbf{Multimodality.}  ADE measures distance to a single ground-truth route.
+      A model that generates one high-quality mode of the route distribution will
+      appear worse than one that generates the mean, even if the mode is more useful.
+      Addressing this requires a coverage metric and a generative (non-deterministic)
+      model --- motivating v13.
+\item \textbf{Long-route degradation.}  No trained model has matched retrieval-top-1
+      on routes $>$500\,km.  The mean-pool failure (v9) was fixed in v10, but v10's
+      long-bucket \ade{} remains 1.4$\times$ worse than retrieval-top-1 on dirty data.
+      A length router partially mitigates this without training.
+\item \textbf{Hard water-validity at zero ADE cost.}
+      All current approaches pay an ADE cost for enforcing the water constraint:
+      $+5$\,\% for hard-projection on clean data, $\approx$0\,\% for snap-only
+      on clean data (production).
+      A model that structurally cannot generate land-crossing routes
+      while maintaining ADE competitive with v9 remains an open problem.
+\end{enumerate}
+
+\subsection{The project's deepest lesson}
+
+The single most repeated finding is:
+\textbf{per-step training metrics do not predict autoregressive rollout quality.}
+v2$\to$v5 demonstrated this on val\_delta; v12 demonstrated it again on CE accuracy.
+Any proposed architecture should be validated by rollout evaluation at the smallest
+reasonable scale before committing to a full training run.
+This principle directly informs the v13 pre-flight checklist (Section~\ref{sec:future}).
+
+% =====================================================================
+\section{Outlook: Proposed v13 -- TrajDiff}
+\label{sec:future}
+
+\subsection{Motivation}
+
+The v10 + WaterRouter production system is autoregressive: it generates one
+waypoint at a time, conditioning on all previously generated waypoints.
+This structure couples error propagation across all 128 steps (the source of
+long-route degradation) and cannot natively sample multiple diverse routes
+(limiting coverage of the multimodal distribution).
+
+TrajDiff abandons autoregressive decoding in favour of
+\emph{whole-sequence denoising diffusion}, reframing route generation as:
+``start from a Gaussian noise trajectory and iteratively denoise it into a
+plausible route, conditioning on (start, end, vessel-type, 5 retrieved routes).''
+Diffusion models naturally support:
+(1) multiple independent samples per query (diversity without retraining),
+(2) inference-time guidance (land penalty applied at each DDIM step),
+(3) the same conditioning bank as v10 (reusing verified retrieval infrastructure).
+
+\subsection{Architecture overview}
+
+A DiT~\cite{peebles2023dit} backbone with 6 bidirectional self-attention blocks
+($d=256$, 8 heads, 1024-dim FFN, adaLN-Zero modulation by diffusion timestep).
+The conditioning memory (same 163-token v10 bank) is provided via cross-attention.
+SDF features (5$\times$5 coarse patch + 3$\times$3 fine patch at each of 128 noisy
+positions) are computed per block and concatenated with the per-step input.
+Classifier-free guidance with $p_\text{drop}=0.1$ and $w=1.5$.
+Score-based land guidance adds $\eta_t \cdot \nabla_{x_t} \text{ReLU}(\text{sdf}-5)^2$
+at each DDIM step, with $\eta_t$ annealed from 0 to 0.1.
+At inference, 8 trajectories are sampled in parallel and the best-scoring is returned.
+
+\subsection{Length router (v13a)}
+
+Independent of the trained model, a no-training length router dispatches on
+great-circle distance:
+\[
+  \hat{\mathbf{x}} = \begin{cases}
+    \text{retrieval-top-1} & \text{if } d_\text{GC} > 500\,km \\
+    \text{v10 raw}         & \text{otherwise}
+  \end{cases}
+\]
+Projected \ade{}: 5500--5800~m on dirty data (from CLAUDE.md projections).
+This baseline must be evaluated before committing to v13 training: if the length
+router already clears the target, the full diffusion model is unnecessary.
+
+\subsection{Pre-flight checklist}
+
+The engineering specification in \texttt{docs/v13\_proposal.md} lists five
+pre-flight checks required before the 100-epoch training run:
+\begin{enumerate}
+  \item Re-evaluate v10 across seeds $\{0, 1, 7, 42, 100\}$ on clean data to
+        measure $\sigma_\ade{}$ (required to determine statistical significance
+        of any v13 improvement).
+  \item Implement and evaluate the length router (v13a) without the trained model.
+  \item Build \texttt{land\_sdf\_005deg.npz} and verify memory budget
+        ($\approx$2.3\,GB at float16).
+  \item Train a minimal unconditional DiT on $T=16$ (downsampled trajectories)
+        for 20 epochs to confirm diffusion dynamics before scaling.
+  \item Only then scale to $T=128$ with full conditioning.
+\end{enumerate}
+
+\textbf{v13 is specified but not yet implemented.}
+All code described in this section (\texttt{src/model\_gen\_v13.py},
+\texttt{src/diffusion.py}, training and eval scripts) remains to be written.
+
+% =====================================================================
+\bibliographystyle{plain}
+\bibliography{references}
+
+% =====================================================================
+\appendix
+
+\section{Reproducibility Notes}
+\label{app:repro}
+
+The production result (v10 + WaterRouter on clean data, ADE 6282\,m,
+0\,\% land@10km) can be reproduced from the repository root as follows.
+
+\textbf{Step 1: One-shot data builds (cached; skip if files exist):}
+\begin{lstlisting}[language=bash]
+python3 scripts/data/filter_trajgen_npz.py \
+    --out_npz data/processed/trajgen_128_clean.npz \
+    --land5_max_frac 0.02 --max_pen_km 10.0
+
+python3 -c "from src.data_gen_retrieval import build_and_cache_knn; \
+    build_and_cache_knn('data/processed/trajgen_128_clean.npz', \
+                        'data/processed/trajgen_128_clean_knn_k5.npz', \
+                        val_frac=0.15, seed=42, k=5, vtype_weight=0.5)"
+\end{lstlisting}
+
+\textbf{Step 2: Production evaluation (v10 ep52 checkpoint, no retraining):}
+\begin{lstlisting}[language=bash]
+python3 scripts/eval/eval_gen_v10_router.py \
+    --data_npz data/processed/trajgen_128_clean.npz \
+    --checkpoint runs/trajgen_v10/best.pt \
+    --knn_cache data/processed/trajgen_128_clean_knn_k5.npz \
+    --water_graph data/processed/water_graph_005deg.npz \
+    --land_sdf data/processed/land_sdf_050deg.npz \
+    --n_eval 500 --no_frechet
+\end{lstlisting}
+
+\textbf{Step 3: Regenerate report figures:}
+\begin{lstlisting}[language=bash]
+python3 scripts/eval/plot_comparison.py --out_dir figures/
+python3 scripts/eval/plot_land_sdf.py \
+    --land_sdf data/processed/land_sdf_050deg.npz \
+    --out figures/land_sdf.png
+cp figures/*.png report/figures/
+cd report && latexmk -pdf report.tex
+\end{lstlisting}
+
+\textbf{Known limitations of the benchmark:}
+\begin{itemize}
+  \item All trajectory-generation evaluation uses a single seed (42), $n=500$.
+        Seed variance has not been measured; see v13 pre-flight checklist item~1.
+  \item The displacement model (v1) baseline uses \texttt{results/baseline.json}
+        saved per run; trajectory generation models do not produce this file
+        (different evaluation protocol).
+  \item The \texttt{12mo\_seq80.yaml} displacement config has no corresponding run
+        (\texttt{runs/12mo\_seq80/} is empty) --- this run was never executed.
+\end{itemize}
+
+\section{Repository Structure}
+\label{app:structure}
+
+Key paths relative to the repository root:
+
+\begin{description}
+  \item[\texttt{src/}] Model and data modules.
+        \texttt{model.py}/\texttt{data.py}/\texttt{metrics.py} (v1);
+        \texttt{*\_gen.py} (v2); \texttt{*\_gen\_obs.py} (v6/v7);
+        \texttt{*\_gen\_retrieval.py} (v9);
+        \texttt{model\_gen\_v10.py}/\texttt{land\_mask.py}/\texttt{water\_router.py} (v10, production);
+        \texttt{model\_gen\_v11.py}/\texttt{candidates.py} (v11, parked);
+        \texttt{model\_gen\_v12.py}/\texttt{data\_gen\_v12.py} (v12, abandoned).
+  \item[\texttt{scripts/train/}] One training script per model version.
+  \item[\texttt{scripts/eval/}] Evaluation, visualisation, and plotting scripts.
+  \item[\texttt{configs/}] YAML experiment configs grouped by approach
+        (\texttt{displacement/}, \texttt{trajgen/}, \texttt{obstacle/}, \texttt{retrieval/}).
+  \item[\texttt{runs/}] Training outputs (not tracked by git):
+        \texttt{best.pt}, \texttt{metrics.csv}, \texttt{training\_curves.png} per run.
+  \item[\texttt{data/processed/}] Processed datasets and cached artefacts (not tracked).
+  \item[\texttt{docs/}] \texttt{narrative.md} (project narrative §1--§8);
+        \texttt{decisions.md} (post-mortems); \texttt{v13\_proposal.md} (engineering spec);
+        \texttt{references/} (three reference PDFs and notes).
+  \item[\texttt{results/summary.csv}] One row per completed experiment with ADE/FDE
+        and qualitative notes.
+\end{description}
+
+\textbf{Untracked production code.}
+At the time of writing, the v10 production source files
+(\texttt{src/model\_gen\_v10.py}, \texttt{src/land\_mask.py},
+\texttt{src/water\_router.py}, and associated scripts) are not yet committed to
+git.  The full set of files to commit is described in the project's
+\texttt{CLAUDE.md} §``Git commit groupings''.
+
+\section{Missing or Incomplete Visual Evidence}
+\label{app:missing}
+
+\subsection{Multi-seed variance plot}
+
+\textbf{Intended figure:} ADE mean $\pm$ std across seeds $\{0, 1, 7, 42, 100\}$
+for the v10 + WaterRouter production configuration on
+\texttt{trajgen\_128\_clean.npz}.
+
+\textbf{Why it matters:} The v9 vs.\ v10 ADE delta (377\,m) may be inside
+seed variance.  Without a multi-seed measurement, any future improvement claim
+less than $\sim$400\,m is not statistically defensible.
+
+\textbf{Missing data:} Only seed=42 has been run.
+
+\textbf{Required action:}
+\begin{lstlisting}[language=bash]
+for seed in 0 1 7 100; do
+  python3 scripts/eval/eval_gen_v10_router.py \
+    --data_npz data/processed/trajgen_128_clean.npz \
+    --checkpoint runs/trajgen_v10/best.pt \
+    --knn_cache data/processed/trajgen_128_clean_knn_k5.npz \
+    --water_graph data/processed/water_graph_005deg.npz \
+    --land_sdf data/processed/land_sdf_050deg.npz \
+    --n_eval 500 --no_frechet --seed $seed
+done
+\end{lstlisting}
+Then update \texttt{scripts/eval/plot\_comparison.py} to include the
+$\pm\sigma$ error bars.
+
+\subsection{v13 TrajDiff sample diversity plot}
+
+\begin{figure}[ht]
+  \centering
+  \fbox{\parbox{0.8\textwidth}{
+    \centering
+    TODO: Insert figure showing 8 diffusion samples from v13 for a single
+    (start, end, vessel-type) query, overlaid on the ground-truth route
+    and the 5 retrieved training routes.
+    Should illustrate mode diversity and land-avoidance behaviour.
+  }}
+  \caption{Placeholder: TrajDiff sample diversity plot (v13 not yet implemented).}
+  \label{fig:v13-samples}
+\end{figure}
+
+\textbf{Required action:} Implement v13 per \texttt{docs/v13\_proposal.md},
+run the pre-flight checklist, then generate this figure with
+\texttt{scripts/eval/visualize\_gen\_v13.py}.
+
+\subsection{v13 length router evaluation}
+
+\textbf{Intended figure:} ADE vs.\ route distance scatter plot comparing the
+no-training v13 length router (v10 short/medium + retrieval-top-1 long) against
+the full TrajDiff model, for all 500 validation routes on clean data.
+
+\textbf{Required action:} First implement \texttt{scripts/eval/eval\_gen\_v13\_router.py}
+(uses only existing v10 checkpoint + retrieval, no new training).
+This is the ``v13a'' baseline that must be evaluated before committing to training.
+
+\subsection{Architecture diagrams for v9, v12, v13}
+
+The v9 (mean-pool retrieval), v12 (water-cell pointer), and v13 (DiT backbone)
+architectures have no diagrams on disk.
+
+\begin{figure}[ht]
+  \centering
+  \fbox{\parbox{0.8\textwidth}{
+    \centering
+    TODO: Architecture diagram for v9 (MeanPoolRouteEncoder extending v4).\\
+    Should show: 3 base tokens + K mean-pooled route summaries $\to$ 8-token memory.
+  }}
+  \caption{Placeholder: v9 mean-pool retrieval architecture.}
+  \label{fig:v9-arch-placeholder}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \fbox{\parbox{0.8\textwidth}{
+    \centering
+    TODO: Architecture diagram for v13 TrajDiff (DiT backbone with conditioning bank).\\
+    See \texttt{docs/v13\_proposal.md} §Architecture for the full ASCII diagram.
+  }}
+  \caption{Placeholder: TrajDiff (v13) architecture.}
+  \label{fig:v13-arch-placeholder}
+\end{figure}
+
+\end{document}

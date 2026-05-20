@@ -1,0 +1,66 @@
+\contentsline {section}{\numberline {1}Introduction and Context}{4}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Maritime trajectory modelling}{4}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Problem statement}{4}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}Why this is hard}{4}{subsection.1.3}%
+\contentsline {subsection}{\numberline {1.4}Contribution overview}{5}{subsection.1.4}%
+\contentsline {section}{\numberline {2}Background}{5}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Transformer encoder and encoder-decoder}{5}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Autoregressive generation and exposure bias}{5}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Denoising diffusion models}{5}{subsection.2.3}%
+\contentsline {subsection}{\numberline {2.4}Signed-distance fields}{6}{subsection.2.4}%
+\contentsline {section}{\numberline {3}Dataset and Experimental Setup}{6}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Data source and filtering}{6}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Evaluation protocol}{6}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Hardware and software}{7}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Baselines}{7}{subsection.3.4}%
+\contentsline {section}{\numberline {4}Technical Contributions}{7}{section.4}%
+\contentsline {subsection}{\numberline {4.1}v1 -- Next-step displacement prediction}{7}{subsection.4.1}%
+\contentsline {subsubsection}{\numberline {4.1.1}Architecture}{7}{subsubsection.4.1.1}%
+\contentsline {subsubsection}{\numberline {4.1.2}Result}{7}{subsubsection.4.1.2}%
+\contentsline {subsubsection}{\numberline {4.1.3}Lesson}{8}{subsubsection.4.1.3}%
+\contentsline {subsection}{\numberline {4.2}v2--v5 -- Encoder-decoder trajectory generator}{8}{subsection.4.2}%
+\contentsline {subsubsection}{\numberline {4.2.1}Reframing as seq2seq}{8}{subsubsection.4.2.1}%
+\contentsline {subsubsection}{\numberline {4.2.2}Architecture (\texttt {src/model\_gen.py})}{8}{subsubsection.4.2.2}%
+\contentsline {subsubsection}{\numberline {4.2.3}Linear endpoint correction}{9}{subsubsection.4.2.3}%
+\contentsline {subsubsection}{\numberline {4.2.4}Scheduled sampling (v3, v5)}{9}{subsubsection.4.2.4}%
+\contentsline {subsubsection}{\numberline {4.2.5}Architectural ladder results}{9}{subsubsection.4.2.5}%
+\contentsline {subsection}{\numberline {4.3}v6, v7, v8 -- Obstacle-conditioned generation (parked)}{9}{subsection.4.3}%
+\contentsline {subsubsection}{\numberline {4.3.1}Motivation and architecture}{10}{subsubsection.4.3.1}%
+\contentsline {subsubsection}{\numberline {4.3.2}v6 --- the data leak}{10}{subsubsection.4.3.2}%
+\contentsline {subsubsection}{\numberline {4.3.3}v7 --- the structural failure}{10}{subsubsection.4.3.3}%
+\contentsline {subsection}{\numberline {4.4}v9 -- Retrieval-augmented generation}{11}{subsection.4.4}%
+\contentsline {subsubsection}{\numberline {4.4.1}Retrieval-top-1 gate}{11}{subsubsection.4.4.1}%
+\contentsline {subsubsection}{\numberline {4.4.2}Architecture (\texttt {src/model\_gen\_retrieval.py})}{11}{subsubsection.4.4.2}%
+\contentsline {subsubsection}{\numberline {4.4.3}Results}{11}{subsubsection.4.4.3}%
+\contentsline {subsection}{\numberline {4.5}v10 -- Per-timestep retrieval and land-aware training}{11}{subsection.4.5}%
+\contentsline {subsubsection}{\numberline {4.5.1}Change 1: Per-step retrieval bank}{11}{subsubsection.4.5.1}%
+\contentsline {subsubsection}{\numberline {4.5.2}Change 2: Windowed causal mask}{12}{subsubsection.4.5.2}%
+\contentsline {subsubsection}{\numberline {4.5.3}Change 3: Land-aware loss and hard-projection inference}{12}{subsubsection.4.5.3}%
+\contentsline {subsubsection}{\numberline {4.5.4}Results on dirty data}{13}{subsubsection.4.5.4}%
+\contentsline {subsection}{\numberline {4.6}WaterRouter post-processor}{13}{subsection.4.6}%
+\contentsline {subsection}{\numberline {4.7}E1 -- Upstream data cleaning}{14}{subsection.4.7}%
+\contentsline {subsubsection}{\numberline {4.7.1}Diagnosis}{14}{subsubsection.4.7.1}%
+\contentsline {subsubsection}{\numberline {4.7.2}The filter}{14}{subsubsection.4.7.2}%
+\contentsline {subsubsection}{\numberline {4.7.3}Impact}{14}{subsubsection.4.7.3}%
+\contentsline {subsection}{\numberline {4.8}v11 -- Halton-cone pointer (parked)}{15}{subsection.4.8}%
+\contentsline {subsection}{\numberline {4.9}v12 -- Water-cell K-ring pointer (abandoned)}{15}{subsection.4.9}%
+\contentsline {section}{\numberline {5}Results and Discussion}{15}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Summary of all trajectory-generation experiments}{15}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Cross-cutting findings}{16}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Production system use-case ranking}{16}{subsection.5.3}%
+\contentsline {section}{\numberline {6}Summary and Conclusion}{16}{section.6}%
+\contentsline {subsection}{\numberline {6.1}What was achieved}{17}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Open challenges}{17}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}The project's deepest lesson}{18}{subsection.6.3}%
+\contentsline {section}{\numberline {7}Outlook: Proposed v13 -- TrajDiff}{18}{section.7}%
+\contentsline {subsection}{\numberline {7.1}Motivation}{18}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}Architecture overview}{19}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}Length router (v13a)}{19}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.4}Pre-flight checklist}{19}{subsection.7.4}%
+\contentsline {section}{\numberline {A}Reproducibility Notes}{20}{appendix.A}%
+\contentsline {section}{\numberline {B}Repository Structure}{21}{appendix.B}%
+\contentsline {section}{\numberline {C}Missing or Incomplete Visual Evidence}{22}{appendix.C}%
+\contentsline {subsection}{\numberline {C.1}Multi-seed variance plot}{22}{subsection.C.1}%
+\contentsline {subsection}{\numberline {C.2}v13 TrajDiff sample diversity plot}{22}{subsection.C.2}%
+\contentsline {subsection}{\numberline {C.3}v13 length router evaluation}{22}{subsection.C.3}%
+\contentsline {subsection}{\numberline {C.4}Architecture diagrams for v9, v12, v13}{22}{subsection.C.4}%

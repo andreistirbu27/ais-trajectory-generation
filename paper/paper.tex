@@ -1,0 +1,291 @@
+% =============================================================================
+% Paper: Retrieval-Augmented Trajectory Generation with Differentiable
+% Geographic Constraints
+%
+% Target venue: ICLR 2027 (abstract ~Sep 2026)
+%
+% This file is the working draft. Style file (iclr2027_conference.sty or
+% similar) will be added closer to submission. For now we use a neutral
+% article preamble so the skeleton compiles anywhere.
+% =============================================================================
+
+\documentclass[11pt]{article}
+
+% --- packages ----------------------------------------------------------------
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{url}
+
+\hypersetup{colorlinks=true, linkcolor=blue!50!black, citecolor=blue!50!black,
+            urlcolor=blue!50!black}
+
+% --- bibliography ------------------------------------------------------------
+\usepackage[numbers,sort&compress]{natbib}
+
+% --- shortcuts ---------------------------------------------------------------
+\newcommand{\TODO}[1]{\textcolor{red}{\textbf{TODO:} #1}}
+\newcommand{\note}[1]{\textcolor{blue}{[#1]}}
+\newcommand{\ade}{\text{ADE}}
+\newcommand{\fde}{\text{FDE}}
+\newcommand{\sdf}{\text{SDF}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+% --- title -------------------------------------------------------------------
+\title{Retrieval-Augmented Trajectory Generation with\\
+       Differentiable Geographic Constraints}
+
+\author{Andrei Stirbu \\
+        \texttt{andreistirbu2005@gmail.com}
+        \and
+        \TODO{co-authors}}
+
+\date{\today}
+
+% =============================================================================
+\begin{document}
+\maketitle
+
+% =============================================================================
+\begin{abstract}
+\TODO{Final abstract. Working draft from plan \S6:}
+
+Predicting the path a vehicle will take between two known points is a central
+problem in routing, logistics, and anomaly detection. We consider this problem
+for maritime vessels: given a start position, an end position, and a vessel
+type, generate a 128-waypoint route consistent with historical AIS traffic and
+the geography of navigable water. Existing AIS forecasting methods, including
+the recent TrAISformer baseline, predict the next position from a sliding-window
+history of recent reports and have no notion of long-range endpoint
+conditioning or land. We propose a retrieval-augmented encoder--decoder
+Transformer that (i) cross-attends to $K$ historical routes at every decoder
+step, preserving per-timestep shape information lost by previous mean-pool
+retrieval, (ii) is trained with a differentiable signed-distance penalty over a
+coastline raster, biasing the rollout away from land, and (iii) at inference
+time projects on-land predictions onto a fine-grained water-cell graph, making
+the output structurally water-valid. On a US-coastal corpus of 61\,K vessel
+trajectories the method reduces average displacement error by 32\% relative to a
+great-circle baseline and 23\% relative to a mean-pool-retrieval ablation, with
+zero land-crossings at a 10\,km clearance threshold on the held-out test set.
+Cross-region transfer experiments on Danish AIS data show that the retrieval
+mechanism --- but not the land loss --- transfers without retraining. We
+further introduce a shared trajectory-completion benchmark that unifies
+next-step prediction and endpoint-conditioned generation, enabling
+apples-to-apples comparison with TrAISformer and other prior work. All code,
+configs, and the cleaned corpus are released.
+\end{abstract}
+
+% =============================================================================
+\section{Introduction}
+\label{sec:intro}
+\TODO{$\sim$1 page. Outline:}
+\begin{itemize}
+  \item Operational AIS use cases (ETA, anomaly detection, port management,
+        environmental monitoring) want \emph{full routes} between known
+        endpoints, not next-step forecasts.
+  \item Prior AIS work is dominated by sliding-window next-step models
+        \citep{traisformer2024,geotracknet2018}. Even when they extend to
+        multi-step rollouts, they (a) compound error, (b) ignore geographic
+        validity, and (c) require histories that may not be available at query
+        time.
+  \item We reframe the task as endpoint-conditioned route generation and
+        introduce a retrieval-augmented Transformer with a differentiable
+        geographic loss. We give the first head-to-head comparison with
+        TrAISformer on a shared protocol.
+  \item Contributions (three sharp claims):
+        \begin{enumerate}[leftmargin=*,itemsep=0pt]
+          \item A retrieval-augmented endpoint-conditioned Transformer for
+                full-route generation with \emph{per-timestep} retrieval.
+                Per-timestep retrieval preserves shape information that
+                mean-pool retrieval destroys; we quantify a 23\% ADE reduction
+                on long routes.
+          \item A symmetric soft / hard geographic constraint: a differentiable
+                signed-distance penalty during training and a discrete
+                water-graph projection at inference. After
+                constraint-consistent corpus construction, both terms can be
+                applied without measurable ADE penalty, achieving 0\%
+                land-crossings at a 10\,km clearance threshold.
+          \item A unified trajectory-completion benchmark (the $K$-anchor
+                protocol) that subsumes both next-step prediction and
+                endpoint-conditioned generation, enabling direct comparison
+                with TrAISformer and future methods.
+        \end{enumerate}
+  \item Headline numbers: ADE $5930 \pm 372$\,m val, $7637$\,m test on a US
+        corpus of 61\,k trajectories; 0\% land-crossings; cross-region
+        transfer to Danish AIS.
+  \item Roadmap.
+\end{itemize}
+
+% =============================================================================
+\section{Related Work}
+\label{sec:related}
+\TODO{$\sim$1 page. Five-paragraph structure from plan \S4; end with a
+positioning paragraph that says how this work differs from each category.}
+
+\paragraph{AIS trajectory prediction.}
+\TODO{TrAISformer, GeoTrackNet, Capobianco, Forti, etc.}
+
+\paragraph{Transformer trajectory forecasting in other domains.}
+\TODO{Trajectron++, AgentFormer, HiVT, MTR.}
+
+\paragraph{Sequence-to-sequence and graph-based route prediction.}
+\TODO{Pointer Networks, NeuRoute, diffusion route planning.}
+
+\paragraph{Constrained, physics-informed, and geography-aware NN.}
+\TODO{PINN, DeepSDF, Trajectron++ constraints, safe RL.}
+
+\paragraph{Retrieval-augmented generation.}
+\TODO{RETRO, RAG, kNN-LM, retrieval for motion.}
+
+\paragraph{Positioning.}
+\TODO{One paragraph: how this paper differs from each of the five categories.}
+
+% =============================================================================
+\section{Task and Notation}
+\label{sec:task}
+\TODO{$\sim$\onehalf{} page.}
+
+\subsection{Endpoint-conditioned route generation}
+Given a start position $\mathbf{p}_0 \in \mathbb{R}^2$, an end position
+$\mathbf{p}_T \in \mathbb{R}^2$, and a vessel-type label $v \in \mathcal{V}$,
+generate a sequence of $T=128$ waypoints
+$\mathbf{p}_{0:T} = (\mathbf{p}_0, \mathbf{p}_1, \dots, \mathbf{p}_T)$
+\TODO{define formally; specify arc-length-uniform parameterization}.
+
+\subsection{The $K$-anchor unified protocol}
+\TODO{Define the protocol that subsumes (start, end) generation ($K=2$),
+TrAISformer's history task ($K \approx 18$ at one end of the route), and
+intermediate-anchor completion.}
+
+\subsection{Metrics}
+\TODO{ADE, FDE, normalized ADE, length-bucketed ADE, land\%@10\,km,
+cross\%@10\,km, Frechet, inference latency.}
+
+% =============================================================================
+\section{Method}
+\label{sec:method}
+\TODO{$\sim$2 pages. Equations, not just prose.}
+
+\subsection{Retrieval-augmented encoder}
+\TODO{Formal definition of PerStepRouteEncoder. Encoder memory =
+$3 + K \cdot t_{\text{retr}}$ tokens.}
+
+\subsection{Decoder with windowed causal attention}
+\TODO{$k_{\text{past}}=32$ window; cross-attention to encoder memory; output
+head over normalized $(\Delta\text{lon}, \Delta\text{lat})$.}
+
+\subsection{Training objective}
+\begin{equation}
+  \mathcal{L} = \mathcal{L}_\Delta
+              + \lambda_{\text{end}}\,\mathcal{L}_{\text{end}}
+              + \lambda_{\text{smooth}}\,\mathcal{L}_{\text{smooth}}
+              + \lambda_{\text{land}}\,\mathcal{L}_{\text{land}}.
+\end{equation}
+\TODO{Define each term. Emphasize that $\mathcal{L}_{\text{land}}$ uses a
+differentiable bilinear sample on the SDF raster.}
+
+\subsection{Inference and post-processing}
+\TODO{Autoregressive rollout with optional per-step hard land projection;
+linear endpoint correction; WaterRouter snap-only on the 0.005\degree{} water
+graph.}
+
+\subsection{Diffusion variant (TrajDiff)}
+\TODO{v13 architecture: whole-sequence denoising diffusion Transformer with
+classifier-free guidance and score-based land guidance during DDIM sampling.
+See \cref{sec:v13-details} for full specification.}
+
+% =============================================================================
+\section{Experiments}
+\label{sec:experiments}
+\TODO{$\sim$2.5 pages.}
+
+\subsection{Datasets and protocol}
+\TODO{US-coastal corpus (61\,k); Danish DMA (\TODO{n}); cleaning, MMSI-grouped
+split, KNN cache.}
+
+\subsection{Main results}
+\TODO{Headline table: v10+router vs all baselines on US val and test, with
+bootstrap CIs in the main table.}
+
+\subsection{Comparison with TrAISformer}
+\TODO{Three protocols from plan \S3; ADE-vs-K curves under the unified
+$K$-anchor protocol.}
+
+\subsection{Ablations}
+\TODO{Per-timestep vs mean-pool retrieval; $K$ sweep; $t_{\text{retr}}$ sweep;
+$k_{\text{past}}$ sweep; vessel-type drop; no-land-loss; no-router;
+no-land-loss + no-router (the load-bearing ablation); hard-only vs soft-only
+vs both.}
+
+\subsection{Cross-region transfer}
+\TODO{Intra-bbox (Atlantic $\leftrightarrow$ Gulf); US $\leftrightarrow$
+Denmark.}
+
+\subsection{Statistical analysis}
+\TODO{Paired bootstrap 95\% CI; Bonferroni / Holm correction across baselines;
+per-vessel-type breakdown; mean and median ADE across seeds.}
+
+\subsection{Qualitative analysis}
+\TODO{4-route headline figure; pre/post-snap on a peninsula; retrieval-bank
+visualization.}
+
+% =============================================================================
+\section{Discussion and Limitations}
+\label{sec:discussion}
+\TODO{$\sim$\onehalf{} page. Pre-empt reviewer objections (see plan \S2):
+post-processor doing the work; geographic bias; vessel-type fairness;
+diffusion alternative.}
+
+% =============================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+\TODO{$\sim$\onequarter{} page.}
+
+% =============================================================================
+\section*{Reproducibility statement}
+\TODO{Code, configs, cleaned corpus, evaluation harness all released. Anonymized
+URL placeholder for submission.}
+
+% =============================================================================
+\bibliographystyle{plainnat}
+\bibliography{bib/refs}
+
+% =============================================================================
+\appendix
+
+\section{Full architectural ladder (v4 / v5 / v9 / v10)}
+\label{sec:appendix-ladder}
+\TODO{Move the school-report's full ablation ladder here. Source tables:
+\texttt{report/tables/full\_ladder.tex}, \texttt{tier1\_eval.csv}.}
+
+\section{Hyperparameters and training details}
+\label{sec:appendix-hp}
+\TODO{Full table of HPs for v10, TrAISformer-on-US, v13.}
+
+\section{TrajDiff (v13) full specification}
+\label{sec:v13-details}
+\TODO{Pull from \texttt{docs/v13\_proposal.md}; refine against actual
+implementation.}
+
+\section{Additional qualitative examples}
+\label{sec:appendix-qual}
+\TODO{20--40 routes with all baselines overlaid, organized by length bucket.}
+
+\section{Failure-mode analysis}
+\label{sec:appendix-failures}
+\TODO{Systematic categorization of when v10+router underperforms (narrow
+straits, port approaches, sparse retrieval bank, etc.).}
+
+\end{document}

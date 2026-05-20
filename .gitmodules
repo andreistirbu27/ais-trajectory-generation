@@ -1,0 +1,3 @@
+[submodule "paper/external/TrAISformer"]
+	path = paper/external/TrAISformer
+	url = https://github.com/CIA-Oceanix/TrAISformer.git

@@ -1,0 +1,223 @@
+% Working bibliography for the paper. Organized by category from plan §4.
+% Add new entries as they're confirmed; never delete entries (commented out instead).
+
+% =============================================================================
+% (i) AIS trajectory prediction
+% =============================================================================
+
+@article{traisformer2024,
+  title   = {{TrAISformer}: A Generative Transformer for {AIS} Trajectory Prediction},
+  author  = {Nguyen, Duong and Fablet, Ronan},
+  journal = {IEEE Access},
+  year    = {2024},
+  doi     = {10.1109/ACCESS.2024.3349957},
+  note    = {arXiv:2109.03958},
+}
+
+@inproceedings{geotracknet2018,
+  title     = {{GeoTrackNet}: A Maritime Anomaly Detector using Probabilistic Neural Network Representation of {AIS} Tracks and {A} Contrario Detection},
+  author    = {Nguyen, Duong and Vadaine, Rodolphe and Hajduch, Guillaume and Garello, Ren{\'e} and Fablet, Ronan},
+  booktitle = {IEEE Transactions on Intelligent Transportation Systems},
+  year      = {2021},
+  note      = {Earlier version arXiv:1912.00682 (2018)},
+}
+
+@inproceedings{capobianco2021,
+  title     = {Deep Learning Methods for Vessel Trajectory Prediction Based on Recurrent Neural Networks},
+  author    = {Capobianco, Samuele and Millefiori, Leonardo M. and Forti, Nicola and Braca, Paolo and Willett, Peter},
+  booktitle = {IEEE Transactions on Aerospace and Electronic Systems},
+  year      = {2021},
+}
+
+@inproceedings{forti2020,
+  title     = {Prediction of Vessel Trajectories from {AIS} Data via Sequence-to-Sequence Recurrent Neural Networks},
+  author    = {Forti, Nicola and Millefiori, Leonardo M. and Braca, Paolo and Willett, Peter},
+  booktitle = {ICASSP},
+  year      = {2020},
+}
+
+% TODO: AIS-MAR benchmark, if it exists
+% TODO: Chen et al. AIS trajectory prediction
+% TODO: ETA-prediction papers (very related to endpoint conditioning)
+
+% =============================================================================
+% (ii) Transformer trajectory forecasting (motion / vehicle)
+% =============================================================================
+
+@article{trajectronpp2020,
+  title   = {{Trajectron++}: Dynamically-Feasible Trajectory Forecasting With Heterogeneous Data},
+  author  = {Salzmann, Tim and Ivanovic, Boris and Chakravarty, Punarjay and Pavone, Marco},
+  journal = {ECCV},
+  year    = {2020},
+}
+
+@inproceedings{agentformer2021,
+  title     = {{AgentFormer}: Agent-Aware Transformers for Socio-Temporal Multi-Agent Forecasting},
+  author    = {Yuan, Ye and Weng, Xinshuo and Ou, Yanglan and Kitani, Kris},
+  booktitle = {ICCV},
+  year      = {2021},
+}
+
+@inproceedings{hivt2022,
+  title     = {{HiVT}: Hierarchical Vector Transformer for Multi-Agent Motion Prediction},
+  author    = {Zhou, Zikang and Ye, Luyao and Wang, Jianping and Wu, Kui and Lu, Kejie},
+  booktitle = {CVPR},
+  year      = {2022},
+}
+
+@inproceedings{mtr2022,
+  title     = {{MTR}: Motion Transformer with Global Intention Localization and Local Movement Refinement},
+  author    = {Shi, Shaoshuai and Jiang, Li and Dai, Dengxin and Schiele, Bernt},
+  booktitle = {NeurIPS},
+  year      = {2022},
+}
+
+% =============================================================================
+% (iii) Sequence-to-sequence and graph-based route prediction
+% =============================================================================
+
+@inproceedings{pointernet2015,
+  title     = {Pointer Networks},
+  author    = {Vinyals, Oriol and Fortunato, Meire and Jaitly, Navdeep},
+  booktitle = {NeurIPS},
+  year      = {2015},
+}
+
+@inproceedings{motiondiffuser2023,
+  title     = {{MotionDiffuser}: Controllable Multi-Agent Motion Prediction Using Diffusion},
+  author    = {Jiang, Chiyu Max and Cornman, Andre and Park, Cheolho and Sapp, Benjamin and Zhou, Yin and Anguelov, Dragomir},
+  booktitle = {CVPR},
+  year      = {2023},
+}
+
+% TODO: NeuRoute / Learn-to-Route
+% TODO: Trajectron-diffusion or similar recent diffusion route work
+% TODO: GraphTransformer for route planning
+
+% =============================================================================
+% (iv) Constrained / physics-informed / geography-aware NN
+% =============================================================================
+
+@article{pinn2019,
+  title   = {Physics-Informed Neural Networks: A Deep Learning Framework for Solving Forward and Inverse Problems Involving Nonlinear Partial Differential Equations},
+  author  = {Raissi, Maziar and Perdikaris, Paris and Karniadakis, George E.},
+  journal = {Journal of Computational Physics},
+  year    = {2019},
+  volume  = {378},
+  pages   = {686--707},
+}
+
+@inproceedings{deepsdf2019,
+  title     = {{DeepSDF}: Learning Continuous Signed Distance Functions for Shape Representation},
+  author    = {Park, Jeong Joon and Florence, Peter and Straub, Julian and Newcombe, Richard and Lovegrove, Steven},
+  booktitle = {CVPR},
+  year      = {2019},
+}
+
+% TODO: Safe RL / constrained MDPs for trajectory generation
+% TODO: Constrained diffusion (e.g. Lou et al. 2023, gradient-guided generation)
+
+% =============================================================================
+% (v) Retrieval-augmented generation
+% =============================================================================
+
+@inproceedings{retro2022,
+  title     = {Improving Language Models by Retrieving from Trillions of Tokens},
+  author    = {Borgeaud, Sebastian and Mensch, Arthur and Hoffmann, Jordan and Cai, Trevor and Rutherford, Eliza and Millican, Katie and others},
+  booktitle = {ICML},
+  year      = {2022},
+}
+
+@inproceedings{rag2020,
+  title     = {Retrieval-Augmented Generation for Knowledge-Intensive {NLP} Tasks},
+  author    = {Lewis, Patrick and Perez, Ethan and Piktus, Aleksandra and Petroni, Fabio and Karpukhin, Vladimir and Goyal, Naman and others},
+  booktitle = {NeurIPS},
+  year      = {2020},
+}
+
+@inproceedings{knnlm2020,
+  title     = {Generalization through Memorization: Nearest Neighbor Language Models},
+  author    = {Khandelwal, Urvashi and Levy, Omer and Jurafsky, Dan and Zettlemoyer, Luke and Lewis, Mike},
+  booktitle = {ICLR},
+  year      = {2020},
+}
+
+% =============================================================================
+% Foundational
+% =============================================================================
+
+@inproceedings{transformer2017,
+  title     = {Attention is All You Need},
+  author    = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N. and Kaiser, {\L}ukasz and Polosukhin, Illia},
+  booktitle = {NeurIPS},
+  year      = {2017},
+}
+
+% =============================================================================
+% Diffusion models (for v13 references)
+% =============================================================================
+
+@inproceedings{ddpm2020,
+  title     = {Denoising Diffusion Probabilistic Models},
+  author    = {Ho, Jonathan and Jain, Ajay and Abbeel, Pieter},
+  booktitle = {NeurIPS},
+  year      = {2020},
+}
+
+@inproceedings{ddim2021,
+  title     = {Denoising Diffusion Implicit Models},
+  author    = {Song, Jiaming and Meng, Chenlin and Ermon, Stefano},
+  booktitle = {ICLR},
+  year      = {2021},
+}
+
+@inproceedings{edm2022,
+  title     = {Elucidating the Design Space of Diffusion-Based Generative Models},
+  author    = {Karras, Tero and Aittala, Miika and Aila, Timo and Laine, Samuli},
+  booktitle = {NeurIPS},
+  year      = {2022},
+}
+
+@article{cfg2022,
+  title   = {Classifier-Free Diffusion Guidance},
+  author  = {Ho, Jonathan and Salimans, Tim},
+  journal = {NeurIPS Workshop},
+  year    = {2022},
+}
+
+@inproceedings{dit2023,
+  title     = {Scalable Diffusion Models with Transformers},
+  author    = {Peebles, William and Xie, Saining},
+  booktitle = {ICCV},
+  year      = {2023},
+}
+
+@inproceedings{vpred2022,
+  title     = {Progressive Distillation for Fast Sampling of Diffusion Models},
+  author    = {Salimans, Tim and Ho, Jonathan},
+  booktitle = {ICLR},
+  year      = {2022},
+  note      = {v-parameterization},
+}
+
+% =============================================================================
+% Data / map
+% =============================================================================
+
+@article{wessel1996gshhs,
+  title   = {A Global, Self-Consistent, Hierarchical, High-Resolution Shoreline Database},
+  author  = {Wessel, Paul and Smith, Walter H. F.},
+  journal = {Journal of Geophysical Research: Solid Earth},
+  year    = {1996},
+  volume  = {101},
+  number  = {B4},
+  pages   = {8741--8743},
+}
+
+% =============================================================================
+% TODO list before submission
+% =============================================================================
+% - Verify all DOIs and arXiv IDs
+% - Add author ORCIDs where ICLR requires
+% - Cross-reference each cite{} in paper.tex against this file at build time
+% - Remove all "TODO:" comment lines

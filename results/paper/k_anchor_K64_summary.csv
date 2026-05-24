@@ -1,0 +1,4 @@
+method,n_seeds,ade_m_mean,ade_m_std,fde_m_mean,fde_m_std,normalized_ade_mean,normalized_ade_std,ade_short_m_mean,ade_short_m_std,ade_medium_m_mean,ade_medium_m_std,ade_long_m_mean,ade_long_m_std,land_pct_10_mean,land_pct_10_std,cross_pct_10_mean,cross_pct_10_std,max_pen_km_mean_mean,max_pen_km_mean_std
+v10_router,1,6347.81494140625,0.0,969.1920776367188,0.0,0.05838330090045929,0.0,nan,nan,nan,nan,nan,nan,0.0,0.0,0.0,0.0,1.880211202781054,0.0
+retr_top1,1,12388.283203125,0.0,12287.5966796875,0.0,0.1400010585784912,0.0,nan,nan,nan,nan,nan,nan,0.0,0.0,0.0,0.0,2.1460574505951833,0.0
+great_circle,1,39.41814041137695,0.0,106.00031280517578,0.0,0.00018221657956019044,0.0,nan,nan,nan,nan,nan,nan,0.0,0.0,0.0,0.0,2.146780440143431,0.0

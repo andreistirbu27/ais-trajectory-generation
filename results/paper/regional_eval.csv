@@ -1,0 +1,13 @@
+region,n_eval,method,ade_m,land_pct_10,cross_pct_10
+atlantic,500,v10_raw,4242.4,0.12,1.2
+atlantic,500,v10_router,4255.1,0.00,0.0
+atlantic,500,great_circle,5862.4,1.31,4.8
+atlantic,500,retr_top1,9321.8,0.00,0.0
+gulf,500,v10_raw,5705.6,0.00,0.0
+gulf,500,v10_router,5691.1,0.00,0.0
+gulf,500,great_circle,5761.9,0.00,0.0
+gulf,500,retr_top1,12075.6,0.00,0.0
+pacific,500,v10_raw,7262.7,0.00,0.0
+pacific,500,v10_router,7163.2,0.00,0.0
+pacific,500,great_circle,8030.9,0.00,0.0
+pacific,500,retr_top1,16557.4,0.00,0.0

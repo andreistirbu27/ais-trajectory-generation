@@ -1,0 +1,26 @@
+# TrAISformer DMA reproduction — sanity check.
+#
+# Goal: verify our paper venv reproduces TrAISformer's published numbers on
+# the shipped ct_dma dataset. Output dir is under their results/ folder
+# (their script's own auto-generated naming convention; we don't override).
+#
+# This is just a record of the CLI args; the wrapper at
+# scripts/paper/train_traisformer.py is what consumes them. There is no
+# YAML loader for TrAISformer's Config — the wrapper applies overrides
+# directly. Run with:
+#
+#   paper/.venv/bin/python3 scripts/paper/train_traisformer.py \
+#       --max_epochs 50 \
+#       --batch_size 32 \
+#       --dataset_name ct_dma \
+#       --log_to runs/paper/traisformer_dma_repro/train.log
+#
+# Expected outcome (from their paper, Table 1): ADE at 10h horizon
+# ≲ 10 nm ≈ 18.5 km on ct_dma_test. Their script prints in km.
+
+max_epochs: 50
+batch_size: 32
+dataset_name: ct_dma          # uses the 13,679-track shipped pickles
+# All other fields inherit from their config_trAISformer.py defaults
+# (lat/lon bbox 55.5-58.0 / 10.3-13.0, lat_size=250, lon_size=270,
+# sog_size=30, cog_size=72, 8 layers × 8 heads, lr=6e-4).

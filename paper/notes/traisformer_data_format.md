@@ -8,7 +8,7 @@ Each pickled file (`ct_dma_train.pkl`, `_valid.pkl`, `_test.pkl`) is a Python li
 [
     {
         "mmsi": <int>,
-        "traj": np.ndarray of shape (N, 5),  # columns: lat, lon, sog, cog, unix_timestamp
+        "traj": np.ndarray of shape (N, 6),  # see column table below
     },
     ...
 ]
@@ -16,15 +16,18 @@ Each pickled file (`ct_dma_train.pkl`, `_valid.pkl`, `_test.pkl`) is a Python li
 
 Pickled with `pickle.dump` (no compression).
 
+**Correction (verified by loading the shipped `ct_dma_train.pkl`):** the README claims `(N, 5)` (lat/lon/sog/cog/timestamp), but the **actual shipped data is `(N, 6)`** — there is a 6th column with a per-row MMSI repeat. Their `datasets.py` only reads `[:, :4]` (features) and `[0, 4]` (track start time), so column 5 is ignored by their loader. Our `csv_to_traisformer_pkl.py` outputs the 6-column form for byte-compatibility with their shipped data, even though the 6th column is redundant.
+
 ## Column semantics (inferred from `datasets.py` and `trAISformer.py:151`)
 
 | Index | Field | Storage | Notes |
 |---|---|---|---|
-| 0 | lat_normalized | float in [0, 1) | `(lat_deg - lat_min) / (lat_max - lat_min)` |
-| 1 | lon_normalized | float in [0, 1) | `(lon_deg - lon_min) / (lon_max - lon_min)` |
-| 2 | sog_normalized | float in [0, 1) | `sog_kn / 30.0` |
-| 3 | cog_normalized | float in [0, 1) | `cog_deg / 360.0` |
+| 0 | lat_normalized | float in [0, 1] | `(lat_deg - lat_min) / (lat_max - lat_min)`; their code clips to `<= 0.9999` |
+| 1 | lon_normalized | float in [0, 1] | `(lon_deg - lon_min) / (lon_max - lon_min)` |
+| 2 | sog_normalized | float in [0, 1] | `sog_kn / 30.0` |
+| 3 | cog_normalized | float in [0, 1] | `cog_deg / 360.0` |
 | 4 | unix_timestamp | float seconds | Used only at eval time to scale times |
+| 5 | mmsi_repeat | float | Repeats the per-track MMSI on every row. Ignored by their loader; we include it for byte-compatibility with shipped pickles. |
 
 `datasets.py:66` clips values: `m_v[m_v > 0.9999] = 0.9999`. So strictly speaking values must lie in [0, 0.9999].
 

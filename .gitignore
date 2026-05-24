@@ -33,6 +33,9 @@ logs/*
 *.md
 *.txt
 
+# Whitelist root-level docs that should be tracked despite the global *.md rule
+!HISTORY.md
+
 # LaTeX build artifacts
 *.aux
 *.log

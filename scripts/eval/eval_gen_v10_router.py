@@ -115,10 +115,7 @@ def generate(model, val_traj, val_vt, train_traj, val_knn, vtype_vocab,
                 n_steps=n_resample,
                 pos_scaler=scalers.pos, delta_scaler=scalers.delta,
                 land_mask=land_mask,
-                hard_threshold_km=hard_threshold_km,
-                n_candidates=n_candidates,
-                rerank_sigma=rerank_sigma,
-                rerank_threshold_km=rerank_threshold_km)
+                hard_threshold_km=hard_threshold_km)
 
         gen_norm_np = gen_norm.permute(1, 0, 2).cpu().numpy()
         for i in range(B):

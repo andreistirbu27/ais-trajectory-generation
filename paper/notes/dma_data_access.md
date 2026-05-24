@@ -1,5 +1,18 @@
 # Danish AIS Data (DMA) — Access Plan
 
+> **2026-05-21 update — major scope reduction.**
+> Sanity-check run revealed the TrAISformer "sample" pickle is **not a sample** — it's the complete Kattegat dataset they trained on:
+> | split | tracks |
+> |---|---|
+> | `ct_dma_train.pkl` | 10,605 |
+> | `ct_dma_valid.pkl` |  1,481 |
+> | `ct_dma_test.pkl`  |  1,593 |
+> | **total**          | **13,679** |
+>
+> That's enough to **reproduce TrAISformer's published Kattegat numbers** and to **retrain our paper-track methods on Danish data** with no download required. The cross-region experiment is therefore unblocked Week 1 — no waiting on DMA portal access, no schema-drift debugging, no 30-80 GB of disk.
+>
+> Sections "Concrete steps" below are kept as a fallback if reviewers ask for a bigger Danish corpus, but the **default plan now uses only the shipped 13,679-track Kattegat dataset.**
+
 ## Source
 
 - URL: https://dma.dk/safety-at-sea/navigational-information/ais-data
@@ -11,13 +24,17 @@
 - TrAISformer used a Kattegat sub-region: lat 55.5–58.0, lon 10.3–13.0.
 - 10-minute resampling.
 - 18 history + 24 future = 7 hours total per training sample (and they filter by `min_seqlen=36` ⇒ 6+ hours per source track).
-- A small sample (~few MB) ships in `paper/external/TrAISformer/data/ct_dma/` — useful for sanity checks but **not enough to retrain v10**.
+- The pickles shipped under `paper/external/TrAISformer/data/ct_dma/` are the **full Kattegat dataset** (10,605 / 1,481 / 1,593 = 13,679 tracks), schema `(N, 6)` float32 = `[lat_norm, lon_norm, sog_norm, cog_norm, unix_ts, mmsi]` (see `traisformer_data_format.md`). Their `datasets.py` only reads `[:, :4]` for features and `[0, 4]` for the per-track start time; column 5 is a redundant per-row MMSI repeat. **No additional download is needed to reproduce TrAISformer or to run the cross-region experiment.**
 
 ## What we need
 
 For our cross-region experiment, we want **comparable scale to our US clean corpus**: ~60k cleaned trajectories, post-filtering. Estimate: download enough source data such that after `prepare_trajgen.py`-equivalent filtering we have 30k+ Danish tracks.
 
 Rough estimate: DMA publishes one ZIP per day per "area"; each daily ZIP is 50–500 MB. A full year of Denmark coverage is ~30–80 GB raw.
+
+## Concrete steps (FALLBACK ONLY — not on the critical path)
+
+The original plan to download a year of DMA data is no longer required for the headline cross-region experiment. The 13,679-track shipped Kattegat dataset is enough to train and evaluate on Danish waters at parity with TrAISformer. The download plan below is retained only as a fallback if reviewers ask for either (a) a larger Danish corpus, (b) a year that doesn't overlap TrAISformer's published era, or (c) coverage outside Kattegat.
 
 ## Concrete steps (week 4-5)
 

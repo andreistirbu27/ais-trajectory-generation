@@ -346,11 +346,16 @@ def main():
     print(f"  TF32 matmul  : {'on' if device.type == 'cuda' else 'n/a'}")
     print(f"  cudnn bench  : {'on' if device.type == 'cuda' else 'n/a'}\n")
 
-    # Land SDF
-    print(f"Loading land SDF: {args.land_sdf}")
-    land_mask = LandMask.load(args.land_sdf)
-    land_mask.as_torch(device=device, dtype=torch.float32)
-    print(f"  Grid {land_mask.shape}  threshold={args.land_threshold_km} km\n")
+    # Land SDF (skip when land-awareness is disabled — e.g. DMA training where
+    # the US-bbox SDF doesn't cover the Kattegat ROI).
+    if args.lambda_land > 0:
+        print(f"Loading land SDF: {args.land_sdf}")
+        land_mask = LandMask.load(args.land_sdf)
+        land_mask.as_torch(device=device, dtype=torch.float32)
+        print(f"  Grid {land_mask.shape}  threshold={args.land_threshold_km} km\n")
+    else:
+        print("Skipping land SDF (lambda_land=0).\n")
+        land_mask = None
 
     # KNN index
     knn = build_and_cache_knn(

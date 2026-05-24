@@ -1,0 +1,56 @@
+# Paper-track v10 ablation: K=0 (no retrieval).
+#
+# Per strategic plan §5, this is one of the "missing ablations" — the
+# paper currently has no run showing what v10 looks like with the
+# retrieval bank disabled. Together with the existing v10 raw / +router
+# numbers, this lets us attribute the retrieval contribution cleanly.
+#
+# Implementation note: setting k_retrieval=0 is not directly supported by
+# the current train_gen_v10.py — the dataset always requests K neighbors.
+# Two options:
+#   1. Add a `--no_retrieval` flag to train_gen_v10.py that swaps in the
+#      non-retrieval TrajectoryGenerator (v2/v5 architecture) instead. This
+#      is the cleanest ablation because it removes the retrieval encoder
+#      tokens entirely.
+#   2. Train v10 with k_retrieval=1 and zero out the retrieved-route token
+#      embedding at runtime. Cheaper, but the model still sees the slot.
+# Recommendation: option 1 — fork train_gen_v10.py to scripts/paper/
+# train_v10_no_retrieval.py (forks discouraged in plan; keep close).
+#
+# This YAML is a configuration record only; the corresponding paper-track
+# training script does not exist yet. Build when you turn to ablations.
+
+data_npz: data/processed/trajgen_128_clean.npz
+out_dir: runs/paper/v10_no_retrieval
+
+# Split
+val_frac: 0.15
+seed: 42
+test_frac: 0.05
+knn_cache: data/processed/trajgen_128_clean_knn_k5_t005.npz   # not used by this ablation
+
+# Model (v2/v5 architecture — no retrieval encoder)
+d_model: 256
+nhead: 8
+num_encoder_layers: 2
+num_decoder_layers: 4
+dim_feedforward: 1024
+dropout: 0.1
+k_past: 32
+
+# Training (mirror v10's schedule for fair comparison)
+batch_size: 64
+epochs: 60
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+
+# Loss — keep land penalty so the ablation isolates retrieval, not land
+lambda_end: 10.0
+lambda_smooth: 1.0
+lambda_land: 0.01
+
+# Land mask
+land_sdf: data/processed/land_sdf_050deg.npz
+land_threshold_km: 10.0

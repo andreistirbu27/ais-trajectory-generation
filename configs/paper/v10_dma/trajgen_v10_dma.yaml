@@ -1,0 +1,58 @@
+# Trajectory Generation v10 — DMA (Kattegat) training
+#
+# Mirrors configs/trajgen/trajgen_v10.yaml but adapted for the DMA dataset:
+#   - data: data/processed/dma_128_traineval.npz (12,086 tracks, excludes the
+#     1,593 test tracks reserved for K-anchor benchmark)
+#   - lambda_land=0: the US-bbox land SDF doesn't cover the Kattegat ROI;
+#     v10-DMA runs land-free for apples-to-apples comparison with TrAISformer
+#     (which has no land awareness either).
+#   - vessel_types are a single placeholder (70) since DMA pkls lack them.
+#
+# Usage (wrap in nohup for SSH-drop survival):
+#   paper/.venv/bin/python3 scripts/train/train_gen_v10.py \
+#       --config configs/paper/v10_dma/trajgen_v10_dma.yaml
+
+data_npz: data/processed/dma_128_traineval.npz
+out_dir: runs/paper/v10_dma
+
+# Dataset
+val_frac: 0.15
+seed: 42
+
+# Retrieval
+k_retrieval: 5
+retrieval_vtype_weight: 0.5
+exclude_self: true
+knn_cache: data/processed/dma_128_traineval_knn_k5.npz
+t_retr: 32
+
+# Model (identical to production v10 — keeps the comparison architectural
+# rather than hyperparameter-tuned).
+d_model: 256
+nhead: 8
+num_encoder_layers: 2
+num_decoder_layers: 4
+dim_feedforward: 1024
+dropout: 0.1
+k_past: 32
+
+# Training (60 epochs on 12k tracks ≈ ~1h wall-clock on RTX 3090)
+batch_size: 64
+epochs: 60
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+
+# Loss weights — land-free for DMA
+lambda_end: 10.0
+lambda_smooth: 1.0
+lambda_land: 0.0
+
+# Land mask (skipped because lambda_land=0, but kept for arg-parser compatibility)
+land_sdf: data/processed/land_sdf_050deg.npz
+land_threshold_km: 10.0
+
+# Logging
+val_eval_batches: 30
+log_every: 100

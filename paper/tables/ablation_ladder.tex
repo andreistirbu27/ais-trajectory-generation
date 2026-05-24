@@ -1,0 +1,28 @@
+\begin{table}[t]
+  \centering
+  \small
+  \caption{Architectural ladder on the cleaned US corpus
+  (\texttt{trajgen\_128\_clean.npz}). Mean $\pm$ std over 5 MMSI-grouped
+  seeds, $n_{\text{val}}=500$ per seed. Each row swaps in or out a
+  single component. ADE/FDE in metres; land\%/cross\% in percent at
+  $10$\,km clearance. The production model (v10 + WaterRouter) reaches
+  the joint Pareto frontier of ADE and geographic validity.}
+  \label{tab:ablation}
+  \begin{tabular}{lrrrr}
+    \toprule
+    \textbf{Variant} & \ade~(m) & \fde~(m) & land\%@10km & cross\%@10km \\
+    \midrule
+    \emph{Reference baselines} \\
+    \quad Great-circle              & 8735 $\pm$ 651    & 0 $\pm$ 0      & 2.69 $\pm$ 0.44 & 8.80 $\pm$ 0.68 \\
+    \quad Retrieval-top-1 (no train)& 11667 $\pm$ 636   & 11832 $\pm$ 468& 0.00 $\pm$ 0.00 & 0.00 $\pm$ 0.00 \\
+    \midrule
+    \emph{Architectural ladder} \\
+    \quad v4 (encoder + bearing)    & 7878 $\pm$ 231 & 0 $\pm$ 0 & 1.41 $\pm$ 0.26 & 6.00 $\pm$ 0.67 \\
+    \quad v5 (+ scheduled sampling) & 7887 $\pm$ 225 & 0 $\pm$ 0 & 1.41 $\pm$ 0.30 & 6.20 $\pm$ 1.01 \\
+    \quad v9 (mean-pool retrieval)  & 7215 $\pm$ 228 & 0 $\pm$ 0 & 1.14 $\pm$ 0.26 & 5.40 $\pm$ 0.79 \\
+    \quad v10 raw (per-step retrieval) & 6034 $\pm$ 221 & 0 $\pm$ 0 & 0.19 $\pm$ 0.05 & 2.08 $\pm$ 0.45 \\
+    \quad v10 + hard projection only & 6381 $\pm$ 198 & 0 $\pm$ 0 & 0.00 $\pm$ 0.00 & 0.00 $\pm$ 0.00 \\
+    \quad \textbf{v10 + WaterRouter (ours)} & \textbf{6051 $\pm$ 225} & 581 $\pm$ 17 & \textbf{0.00 $\pm$ 0.00} & \textbf{0.00 $\pm$ 0.00} \\
+    \bottomrule
+  \end{tabular}
+\end{table}

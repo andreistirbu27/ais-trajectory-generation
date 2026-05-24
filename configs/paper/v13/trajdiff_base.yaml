@@ -1,0 +1,80 @@
+# v13 (TrajDiff) — base config for the diffusion Transformer.
+#
+# Paper-track. See src/model_gen_v13.py and src/diffusion.py.
+# Architecture spec in paper/notes/v13_architecture.md.
+#
+# Usage:
+#   paper/.venv/bin/python3 scripts/paper/train_gen_v13.py \
+#       --config configs/paper/v13/trajdiff_base.yaml
+
+# --- Data ---
+data_npz: data/processed/trajgen_128_clean.npz
+knn_cache: data/processed/trajgen_128_clean_knn_k5.npz
+out_dir: runs/paper/v13_trajdiff_base
+
+val_frac: 0.15
+# test_frac kept at 0 to reuse the existing trajgen_128_clean_knn_k5.npz cache
+# (built with test_frac=0). To carve a true held-out test fold the v10 baseline
+# never saw, build a separate cache (e.g. trajgen_128_clean_knn_k5_t005.npz)
+# and set test_frac to match — otherwise cached KNN indices won't align with
+# the train slice.
+test_frac: 0.0
+seed: 42                # split seed; deterministic train/val/test
+train_seed: 0           # init / dataloader shuffle seed
+
+# --- Retrieval (mirrors v10's choices for direct comparability) ---
+k_retrieval: 5
+retrieval_vtype_weight: 0.5
+exclude_self: true
+t_retr: 32
+
+# --- Backbone (TrajDiffConfig) ---
+seq_len: 128
+in_dim: 2
+n_vessel_types: 28
+vessel_emb_dim: 16
+d_model: 384            # larger than v10's 256 to absorb diffusion-time + retrieval cross-attn
+n_heads: 8
+ffn_mult: 4
+n_layer: 8
+dropout: 0.0            # standard for diffusion
+p_uncond: 0.1           # CFG conditioning-drop probability at training
+time_emb_dim: 256
+
+# --- EDM noise schedule ---
+# Trajectories live in normalized [-1, 1]-ish space; sigma_max scaled
+# accordingly (much smaller than image diffusion's 80).
+sigma_min: 0.002
+sigma_max: 3.0
+sigma_data: 0.5
+rho: 7.0
+sigma_sample_mean: -1.2
+sigma_sample_std: 1.2
+
+# --- Training ---
+batch_size: 64
+epochs: 100             # diffusion needs more epochs than v10's 60
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+ema_decay: 0.999        # standard for diffusion stability
+
+# --- Sampling (used by eval_gen_v13.py; harmless during training) ---
+sample_n_steps: 50
+sample_guidance_scale: 0.0  # 0 = unconditional, sweep at eval time
+
+# --- Land guidance (applied at sampling time, not training; reuses v10's SDF) ---
+# See src/land_mask.py for the sampler. Set both to 0 to disable.
+land_sdf: data/processed/land_sdf_050deg.npz
+land_guidance_strength: 0.0   # gamma in eq. for score correction; sweep at eval
+land_threshold_km: 10.0
+
+# --- Mixed precision + perf ---
+amp: bf16               # bf16 on Ampere+ (e.g. RTX 3090), fp32 on older
+compile: false          # torch.compile = enable later once stable
+
+# --- Logging ---
+log_every: 100
+val_every_epochs: 5     # full sampling val is expensive; not every epoch
+ckpt_every_epochs: 10

@@ -1,0 +1,89 @@
+# v13 (TrajDiff) — retrain with raised sigma_sample_mean.
+#
+# Diff from trajdiff_base.yaml: sigma_sample_mean -1.2 → -0.4.
+#
+# Rationale: the first two runs (base p_uncond=0.1 and p003 p_uncond=0.03)
+# both collapsed to easy-noise dominance — raw-MSE-by-σ diagnostic shows
+# a 40-46× ratio between σ=3.0 and σ=0.002 bins, meaning the model
+# learned to denoise small noise well but never saw enough training
+# samples at σ > 1 to learn high-σ denoising. EDM sampling integrates
+# from σ_max=3.0 down to σ_min=0.002, so the first ~20 denoising steps
+# happen in the under-trained σ regime. Result: ADE ~16-18 km, 2-3×
+# worse than great-circle.
+#
+# Karras' default (mean=-1.2) is calibrated for σ_max=80 image diffusion.
+# For our σ_max=3.0 trajectory data, the log-normal training distribution
+# needs to be centered higher. mean=-1.2 → median σ ≈ 0.30. mean=-0.4 →
+# median σ ≈ 0.67, with much more mass in [1, 3]. p_uncond reverted to
+# the base 0.1 to keep this a single-variable change.
+#
+# See memory: v13-first-eval-findings for the diagnostic data.
+#
+# Usage:
+#   nohup paper/.venv/bin/python3 scripts/paper/train_gen_v13.py \
+#       --config configs/paper/v13/trajdiff_base_sm04.yaml \
+#       > runs/paper/v13_trajdiff_sm04/train.log 2>&1 &
+
+# --- Data ---
+data_npz: data/processed/trajgen_128_clean.npz
+knn_cache: data/processed/trajgen_128_clean_knn_k5.npz
+out_dir: runs/paper/v13_trajdiff_sm04
+
+val_frac: 0.15
+test_frac: 0.0
+seed: 42
+train_seed: 0
+
+# --- Retrieval (mirrors v10) ---
+k_retrieval: 5
+retrieval_vtype_weight: 0.5
+exclude_self: true
+t_retr: 32
+
+# --- Backbone ---
+seq_len: 128
+in_dim: 2
+n_vessel_types: 28
+vessel_emb_dim: 16
+d_model: 384
+n_heads: 8
+ffn_mult: 4
+n_layer: 8
+dropout: 0.0
+p_uncond: 0.1               # reverted to base (p003 ablation confirmed no effect)
+time_emb_dim: 256
+
+# --- EDM noise schedule ---
+sigma_min: 0.002
+sigma_max: 3.0
+sigma_data: 0.5
+rho: 7.0
+sigma_sample_mean: -0.4      # ← CHANGED from -1.2 (median σ: 0.30 → 0.67)
+sigma_sample_std: 1.2
+
+# --- Training ---
+batch_size: 64
+epochs: 100
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+ema_decay: 0.999
+
+# --- Sampling defaults ---
+sample_n_steps: 50
+sample_guidance_scale: 0.0
+
+# --- Land guidance (eval-time) ---
+land_sdf: data/processed/land_sdf_050deg.npz
+land_guidance_strength: 0.0
+land_threshold_km: 10.0
+
+# --- Mixed precision + perf ---
+amp: bf16
+compile: false
+
+# --- Logging ---
+log_every: 100
+val_every_epochs: 5
+ckpt_every_epochs: 10

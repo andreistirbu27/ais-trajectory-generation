@@ -1,0 +1,81 @@
+# v13 (TrajDiff) — retrain with reduced CFG dropout.
+#
+# Diff from trajdiff_base.yaml: p_uncond 0.1 → 0.03.
+#
+# Rationale: the first v13 run (p_uncond=0.1, 65 epochs) was uncompetitive
+# at sampling time — ADE 16.4 km vs v10's 6.05 km, even after CFG sweep
+# (best at g=5) and land guidance (best at L=20 km/step). Predictions
+# meandered (path-ratio 1.7). The standard image-diffusion p_uncond=0.1
+# is calibrated for ~1M-sample datasets; our 49k training trajectories
+# don't see enough conditional updates to learn a strong cond pathway.
+# Dropping to 0.03 gives the conditional signal ~3× more gradient
+# coverage per epoch. See memory: v13-first-eval-findings.
+#
+# Usage:
+#   nohup paper/.venv/bin/python3 scripts/paper/train_gen_v13.py \
+#       --config configs/paper/v13/trajdiff_base_p003.yaml \
+#       > runs/paper/v13_trajdiff_p003/train.log 2>&1 &
+
+# --- Data ---
+data_npz: data/processed/trajgen_128_clean.npz
+knn_cache: data/processed/trajgen_128_clean_knn_k5.npz
+out_dir: runs/paper/v13_trajdiff_p003
+
+val_frac: 0.15
+test_frac: 0.0
+seed: 42
+train_seed: 0
+
+# --- Retrieval (mirrors v10) ---
+k_retrieval: 5
+retrieval_vtype_weight: 0.5
+exclude_self: true
+t_retr: 32
+
+# --- Backbone ---
+seq_len: 128
+in_dim: 2
+n_vessel_types: 28
+vessel_emb_dim: 16
+d_model: 384
+n_heads: 8
+ffn_mult: 4
+n_layer: 8
+dropout: 0.0
+p_uncond: 0.03          # ← CHANGED from 0.1
+time_emb_dim: 256
+
+# --- EDM noise schedule ---
+sigma_min: 0.002
+sigma_max: 3.0
+sigma_data: 0.5
+rho: 7.0
+sigma_sample_mean: -1.2
+sigma_sample_std: 1.2
+
+# --- Training ---
+batch_size: 64
+epochs: 100
+lr: 0.0002
+weight_decay: 0.0001
+grad_clip: 1.0
+warmup_frac: 0.05
+ema_decay: 0.999
+
+# --- Sampling defaults (used by eval; harmless during training) ---
+sample_n_steps: 50
+sample_guidance_scale: 0.0
+
+# --- Land guidance (eval-time only) ---
+land_sdf: data/processed/land_sdf_050deg.npz
+land_guidance_strength: 0.0
+land_threshold_km: 10.0
+
+# --- Mixed precision + perf ---
+amp: bf16
+compile: false
+
+# --- Logging ---
+log_every: 100
+val_every_epochs: 5
+ckpt_every_epochs: 10

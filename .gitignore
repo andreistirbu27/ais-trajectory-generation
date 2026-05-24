@@ -43,9 +43,25 @@ logs/*
 
 # Paper track — un-ignore everything under paper/ even though *.md and *.txt
 # are globally ignored. Build artifacts under paper/ stay ignored via the
-# LaTeX rules above.
+# LaTeX rules above and the explicit re-ignores below.
 !paper/
 !paper/**
+
+# Re-ignore paper/ build artifacts that !paper/** above re-enables.
+# (Subdirectories of paper/ — e.g. paper/figures/*.pdf — are NOT affected;
+# single-level globs only match direct children of paper/.)
+paper/.venv/
+paper/*.log
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.out
+paper/*.toc
+paper/*.synctex.gz
+paper/paper.pdf
+paper/overleaf_bundle/
+paper/overleaf_bundle.zip
+
 # Note: paper/external/TrAISformer/ is tracked as a git submodule
 # (see .gitmodules). Git submodule handles its own file tracking; we just
 # need to not block the submodule add.

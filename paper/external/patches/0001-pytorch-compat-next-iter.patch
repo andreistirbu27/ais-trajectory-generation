@@ -1,0 +1,25 @@
+From a61bb1a484412d9d8e2d305905efb67ad4df3952 Mon Sep 17 00:00:00 2001
+From: NA <andrei.stirbu@essonne.polytechnique.fr>
+Date: Sun, 24 May 2026 17:40:46 +0200
+Subject: [PATCH] compat: use next(iter(dl)) for modern PyTorch
+
+---
+ trainers.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/trainers.py b/trainers.py
+index 1b5443b..83e8dc5 100644
+--- a/trainers.py
++++ b/trainers.py
+@@ -279,7 +279,7 @@ class Trainer:
+             # ==========================================================================================
+             # ==========================================================================================
+             raw_model = model.module if hasattr(self.model, "module") else model
+-            seqs, masks, seqlens, mmsis, time_starts = iter(aisdls["test"]).next()
++            seqs, masks, seqlens, mmsis, time_starts = next(iter(aisdls["test"]))
+             n_plots = 7
+             init_seqlen = INIT_SEQLEN
+             seqs_init = seqs[:n_plots, :init_seqlen, :].to(self.device)
+-- 
+2.52.0
+

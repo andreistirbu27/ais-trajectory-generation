@@ -513,8 +513,8 @@ def fig_v10_router(dirty_npz, v10_ckpt, knn_cache, water_graph, land_mask,
     # Sample medium-length tracks
     gt_km = np.array([path_length_m(val_traj[i]) / 1000 for i in range(len(val_traj))])
     pool = np.where((gt_km > 30) & (gt_km < 400))[0]
-    rng = np.random.RandomState(17)
-    sample_idx = rng.choice(pool, min(40, len(pool)), replace=False)
+    rng = np.random.RandomState(7)
+    sample_idx = rng.choice(pool, min(60, len(pool)), replace=False)
 
     candidates = []
     print("  generating sample predictions (no land-projection)...")

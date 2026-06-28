@@ -1,0 +1,5 @@
+method,batch_size,n_samples,params_m,ms_per_traj
+v10,1,1,5.84,568.73
+v10,32,1,5.84,75.764
+traisformer_b16,1,16,57.42,1312.303
+traisformer_b16,32,16,57.42,364.861

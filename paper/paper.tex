@@ -731,7 +731,11 @@ that is essentially invariant to $K$ --- the K-anchor information beyond
 the first 18 history positions is unused by its architecture.
 
 At the deployment-relevant $K=2$ setting, v10 wins ($5.76\,\pm\,0.07$\,km
-vs.\ TrAISformer's $9.58\,\pm\,0.26$\,km, a $40$\% reduction). At the
+vs.\ TrAISformer's $9.58\,\pm\,0.26$\,km, a $40$\% reduction). The
+comparison does not hinge on the sampling budget: v10's single-shot ADE
+also beats TrAISformer's matched single-shot output ($23.21\,\pm\,0.66$\,km,
+b1) by a wider margin, so the $40$\% figure is the \emph{conservative}
+reading that grants TrAISformer its 16-sample advantage. At the
 dense-anchor $K=64$ setting, piecewise great-circle wins ($0.05$\,km;
 the anchors are so dense that linear interpolation captures almost
 everything). TrAISformer never wins on this protocol --- not because it
@@ -742,6 +746,33 @@ ingested by its architecture, and its $K$-curve is consequently flat
 within seed variance. The protocol thereby surfaces what each method
 actually solves rather than collapsing the comparison to a single
 incommensurable scalar.
+
+\paragraph{Inference cost.} The best-of-16 protocol is generous to
+TrAISformer not only statistically but computationally: it draws 16
+stochastic rollouts per track, whereas v10 emits a route in a single
+deterministic forward pass. \Cref{tab:latency} reports wall-clock
+generation time on one RTX 3090. v10 is both an order of magnitude
+smaller ($5.84$M vs.\ $57.4$M parameters) and $2.3$--$4.8\times$ faster
+per trajectory, despite producing only one sample. The advantage of the
+endpoint-conditioned formulation is therefore not bought with extra
+compute.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption{Inference cost on one RTX 3090 (synthetic batches at the DMA
+  sequence length; generation time depends on shapes, not coordinate
+  values). v10 is single-shot; TrAISformer uses its 16-sample protocol.}
+  \label{tab:latency}
+  \begin{tabular}{lrrrr}
+    \toprule
+    Method      & Params (M) & Samples/traj & ms/traj ($B{=}1$) & ms/traj ($B{=}32$) \\
+    \midrule
+    v10 (ours)  & \textbf{5.84}  & \textbf{1}  & \textbf{569} & \textbf{75.8} \\
+    TrAISformer & 57.4           & 16          & 1312         & 365 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \begin{figure}[t]
   \centering
@@ -761,7 +792,10 @@ incommensurable scalar.
   \centering
   \small
   \caption{$K$-anchor ADE (km) on DMA test set, mean $\pm$ std over 5
-  random subsamples of $n=500$. Lower is better. Best per-column in bold.}
+  random subsamples of $n=500$. Lower is better. Best per-column in bold.
+  TrAISformer is reported under both its published \emph{best-of-16}
+  per-timestep-minimum protocol (b16) and the matched single-shot
+  \emph{best-of-1} (b1); v10 is single-shot.}
   \label{tab:dma_k_anchor}
   \begin{tabular}{lrrrrr}
     \toprule
@@ -771,6 +805,7 @@ incommensurable scalar.
     Retrieval-top-1   & 5.84\,$\pm$\,0.09          & 5.89\,$\pm$\,0.09          & 5.89\,$\pm$\,0.09 & 5.88\,$\pm$\,0.09 & 5.91\,$\pm$\,0.09 \\
     Piecewise GC      & 25.57\,$\pm$\,0.12         & 6.30\,$\pm$\,0.07          & \textbf{1.68}\,$\pm$\,0.03 & \textbf{0.51}\,$\pm$\,0.01 & \textbf{0.05}\,$\pm$\,0.00 \\
     TrAISformer (b16) & 9.58\,$\pm$\,0.26          & 9.60\,$\pm$\,0.26          & 9.60\,$\pm$\,0.26 & 9.60\,$\pm$\,0.26 & 9.61\,$\pm$\,0.26 \\
+    TrAISformer (b1)  & 23.21\,$\pm$\,0.66         & 23.15\,$\pm$\,0.66         & 23.16\,$\pm$\,0.66 & 23.16\,$\pm$\,0.66 & 23.14\,$\pm$\,0.66 \\
     \bottomrule
   \end{tabular}
 \end{table}

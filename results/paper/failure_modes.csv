@@ -1,0 +1,5 @@
+category,overlapping_count,primary_count,worst_n,overall_median_ade_m,worst_median_ade_m
+narrow_or_coastal,13,13,25,3684.0,39744.3
+maneuvering,12,7,25,3684.0,39744.3
+long_route,8,2,25,3684.0,39744.3
+other,,3,25,3684.0,39744.3

@@ -849,6 +849,33 @@ within seed variance.
   \label{fig:length_bucketed_ade}
 \end{figure}
 
+\paragraph{Retrieval depth.}
+How many retrieved analogues does the decoder actually use? Subsetting
+the production checkpoint's retrieval bank at inference (no retraining;
+the model was trained with $K{=}5$) gives a monotone, diminishing-returns
+curve: ADE $7.92 \to 7.13 \to 6.26 \to 6.03$\,km for
+$K \in \{1, 2, 3, 5\}$ (\Cref{tab:retrieval_k}, mean over the same five
+seeds). The first neighbour already beats mean-pool v9, and each
+additional analogue helps less; by $K{=}5$ the curve has nearly flattened
+($-0.23$\,km from $K{=}3$), which justifies the production choice without
+paying for a larger retrieval bank.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption{Retrieval-depth sensitivity of v10 (raw) on the cleaned US
+  corpus, mean $\pm$ std over 5 seeds, $n{=}500$. Eval-only: the bank is
+  subset from the trained $K{=}5$ neighbours.}
+  \label{tab:retrieval_k}
+  \begin{tabular}{lrrrr}
+    \toprule
+    $K$ (neighbours) & 1 & 2 & 3 & 5 \\
+    \midrule
+    \ade~(m) & 7923 $\pm$ 334 & 7131 $\pm$ 231 & 6264 $\pm$ 212 & 6034 $\pm$ 221 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
 \paragraph{Soft-only, hard-only, both.}
 The next two rows of \Cref{tab:ablation} isolate the geographic
 constraint. The \textit{v10 raw} variant (no land loss, no router)
@@ -1088,6 +1115,21 @@ are de-prioritised by the retriever before the model ever sees them.
 
 A larger gallery covering 24 routes across length buckets is in
 \Cref{sec:appendix-qual}.
+
+\paragraph{Failure-mode breakdown.}
+The error distribution is heavy-tailed: on $n{=}1000$ validation routes
+the median ADE is $3.7$\,km but the worst $25$ routes have a median ADE
+of $39.7$\,km. Categorising that tail by measurable properties of the
+ground-truth route (closest approach to land, tortuosity
+$=$ path length / great-circle distance, and great-circle length), the
+dominant causes are \emph{narrow or coastal passages} (13 of 25 routes
+pass within $5$\,km of land, where a small lateral error crosses the
+shoreline) and \emph{maneuvering} (12 of 25 have tortuosity $>1.3$);
+$8$ of $25$ are long ($>500$\,km) routes, and only $3$ of $25$ fall
+outside all three categories. The failures are therefore concentrated
+exactly where the $T{=}128$ arc-length parameterisation is coarsest
+relative to the geometry, not spread uniformly --- consistent with the
+ferry/harbour residual noted above.
 
 % =============================================================================
 \section{Discussion and Limitations}

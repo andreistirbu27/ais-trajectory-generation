@@ -121,11 +121,21 @@ def compute_loss(pred_deltas, batch, scalers, lambda_end, lambda_smooth,
     }
 
 
+# Set from --ablate_vtype in main(): when True, the vessel-type token is fed a
+# constant index 0 so it carries no vessel information (ablation of the
+# conditioning signal). Eval must mirror this (feed vtype=0); see
+# scripts/paper/eval_retrieval_k_sensitivity.py / failure_mode_analysis.py.
+ABLATE_VTYPE = False
+
+
 def _forward(model, batch):
+    vessel_type = batch["vessel_type"]
+    if ABLATE_VTYPE:
+        vessel_type = torch.zeros_like(vessel_type)
     return model(
         start=batch["start_norm"],
         end=batch["end_norm"],
-        vessel_type=batch["vessel_type"],
+        vessel_type=vessel_type,
         target_traj=batch["traj_norm"],
         retrieved_norm=batch["retrieved_norm"],
         retrieval_mask=batch["retrieval_mask"],
@@ -265,6 +275,11 @@ def main():
     parser.add_argument("--t_retr",                type=int,   default=32,
         help="Points per retrieved route after subsampling (per-step tokens)")
 
+    # Ablation
+    parser.add_argument("--ablate_vtype", action="store_true",
+        help="Feed the vessel-type token a constant index 0 (no vessel info). "
+             "Eval must mirror this by feeding vtype=0.")
+
     # Model
     parser.add_argument("--d_model",            type=int,   default=256)
     parser.add_argument("--nhead",              type=int,   default=8)
@@ -325,6 +340,11 @@ def main():
         parser.error("--data_npz is required")
     if not args.knn_cache:
         parser.error("--knn_cache is required")
+
+    global ABLATE_VTYPE
+    ABLATE_VTYPE = bool(getattr(args, "ablate_vtype", False))
+    if ABLATE_VTYPE:
+        print("  ABLATION: vessel-type token disabled (fed constant index 0)")
 
     train_seed = args.train_seed if args.train_seed is not None else args.seed
     set_seed(train_seed)
